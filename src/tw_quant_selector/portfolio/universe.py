@@ -1,0 +1,130 @@
+from datetime import date, timedelta
+from decimal import Decimal
+from typing import Any
+import structlog
+
+log = structlog.get_logger()
+
+ETF_LIST: list[dict[str, str]] = [
+    {"stock_id": "0050", "name": "元大台灣50"},
+    {"stock_id": "0051", "name": "元大中型100"},
+    {"stock_id": "0052", "name": "富邦科技"},
+    {"stock_id": "0056", "name": "元大高股息"},
+    {"stock_id": "00878", "name": "國泰永續高股息"},
+    {"stock_id": "00881", "name": "國泰台灣5G+"},
+    {"stock_id": "006208", "name": "富邦台50"},
+]
+
+ETF_IDS = {e["stock_id"] for e in ETF_LIST}
+SUSPEND_THRESHOLD_DAYS = 30
+REENTRY_OBSERVE_DAYS = 5
+
+
+def get_universe(db, as_of_date: date) -> dict[str, Any]:
+    with db.connection() as conn:
+        stocks = conn.execute(
+            """SELECT stock_id, stock_name, market, industry, list_date, delist_date
+               FROM stocks WHERE is_etf = FALSE"""
+        ).fetchdf()
+
+    etfs = _get_etf_universe(db, as_of_date, stocks)
+    universe = _filter_static(db, as_of_date, stocks)
+    universe = _filter_dynamic(db, as_of_date, universe)
+    universe = _filter_delisted(universe, as_of_date)
+    universe = _filter_suspended(db, as_of_date, universe)
+
+    return {
+        "stocks": universe,
+        "etfs": etfs,
+        "total_count": len(universe) + len(etfs),
+        "as_of_date": as_of_date.isoformat(),
+    }
+
+
+def _get_etf_universe(db, as_of_date: date, stocks_df) -> list[dict]:
+    return [{"stock_id": e["stock_id"], "stock_name": e["name"], "market": "TSE", "is_etf": True}
+            for e in ETF_LIST]
+
+
+def _filter_static(db, as_of_date: date, stocks_df):
+    month_start = as_of_date.replace(day=1)
+    vals = db.execute(
+        """SELECT v.stock_id, v.market_cap, s.industry, s.stock_name
+           FROM valuations v JOIN stocks s ON v.stock_id = s.stock_id
+           WHERE v.trade_date = (SELECT MAX(trade_date) FROM valuations WHERE trade_date <= ?)""",
+        [month_start],
+    ).fetchdf()
+
+    excluded_industries = {"金融保險", "金融及其他", "金融"}
+    excluded_keywords = {"-KY", "ＫＹ"}
+
+    candidates = []
+    for _, row in vals.iterrows():
+        sid = row["stock_id"]
+        ind = (row.get("industry") or "").strip()
+        name = (row.get("stock_name") or "").upper()
+        if ind in excluded_industries:
+            continue
+        if any(kw in name for kw in excluded_keywords):
+            continue
+        cap = row.get("market_cap")
+        if cap is None or cap < Decimal("3000000000"):
+            continue
+        candidates.append(sid)
+    return [s for s in stocks_df.to_dict("records") if s["stock_id"] in set(candidates)]
+
+
+def _filter_dynamic(db, as_of_date: date, candidates: list[dict]) -> list[dict]:
+    if not candidates:
+        return []
+    start_20d = as_of_date - timedelta(days=40)
+    sids = [c["stock_id"] for c in candidates]
+    result = []
+    for sid in sids:
+        rows = db.execute(
+            """SELECT amount FROM daily_prices
+               WHERE stock_id = ? AND trade_date >= ? AND trade_date < ?
+               ORDER BY trade_date DESC LIMIT 20""",
+            [sid, start_20d, as_of_date],
+        ).fetchdf()
+        if rows.empty:
+            continue
+        avg_amount = rows["amount"].mean()
+        if avg_amount and avg_amount >= Decimal("10000000"):
+            result.append(sid)
+    return [c for c in candidates if c["stock_id"] in set(result)]
+
+
+def _filter_delisted(candidates: list[dict], as_of_date: date) -> list[dict]:
+    return [c for c in candidates
+            if c.get("delist_date") is None or c["delist_date"] > as_of_date]
+
+
+def _filter_suspended(db, as_of_date: date, candidates: list[dict]) -> list[dict]:
+    if not candidates:
+        return []
+    sustained = []
+    for c in candidates:
+        sid = c["stock_id"]
+        recent = db.execute(
+            """SELECT trade_date, volume FROM daily_prices
+               WHERE stock_id = ? AND trade_date < ?
+               ORDER BY trade_date DESC LIMIT ?""",
+            [sid, as_of_date, SUSPEND_THRESHOLD_DAYS + 5],
+        ).fetchdf()
+        if recent.empty:
+            sustained.append(c)
+            continue
+        zero_vol_days = 0
+        for _, row in recent.iterrows():
+            if row["volume"] is None or row["volume"] == 0:
+                zero_vol_days += 1
+            else:
+                if zero_vol_days >= SUSPEND_THRESHOLD_DAYS:
+                    break
+                zero_vol_days = 0
+        if zero_vol_days >= SUSPEND_THRESHOLD_DAYS:
+            log.info("universe.suspended.removed", stock_id=sid, days=zero_vol_days)
+            continue
+        sustained.append(c)
+    return sustained

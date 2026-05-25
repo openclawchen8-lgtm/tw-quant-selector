@@ -3,7 +3,7 @@ github_issue: N/A
 title: 策略合成器（Score Combiner）
 type: task
 priority: high
-status: pending
+status: done
 assignee: OpenCode DeepSeek V4 Flash
 created: 2026-05-25
 updated: 2026-05-25

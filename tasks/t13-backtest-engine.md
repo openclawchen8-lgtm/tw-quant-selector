@@ -3,7 +3,7 @@ github_issue: N/A
 title: 回測引擎（含倖存者偏差 / Look-ahead bias 防護）
 type: task
 priority: high
-status: pending
+status: done
 assignee: OpenCode DeepSeek V4 Flash
 created: 2026-05-25
 updated: 2026-05-25

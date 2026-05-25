@@ -3,7 +3,7 @@ github_issue: N/A
 title: 基礎策略架構與 DataProvider 介面
 type: task
 priority: high
-status: pending
+status: done
 assignee: OpenCode DeepSeek V4 Flash
 created: 2026-05-25
 updated: 2026-05-25

@@ -3,7 +3,7 @@ github_issue: N/A
 title: 交易成本模型
 type: task
 priority: medium
-status: pending
+status: done
 assignee: OpenCode DeepSeek V4 Flash
 created: 2026-05-25
 updated: 2026-05-25

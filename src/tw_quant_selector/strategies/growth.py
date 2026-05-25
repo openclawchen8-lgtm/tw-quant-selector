@@ -1,0 +1,67 @@
+from datetime import date, timedelta
+from decimal import Decimal
+
+import numpy as np
+import pandas as pd
+from scipy.stats import zscore
+
+from tw_quant_selector.strategies.base import BaseStrategy, register_strategy
+
+
+@register_strategy
+class GrowthStrategy(BaseStrategy):
+    name = "growth"
+
+    def __init__(self, rev_weight: float = 0.6, eps_weight: float = 0.4, rev_months: int = 3):
+        self.rev_weight = rev_weight
+        self.eps_weight = eps_weight
+        self.rev_months = rev_months
+
+    def get_required_data(self) -> list[str]:
+        return ["monthly_revenue", "financials"]
+
+    def compute_score(self, universe: list[str], as_of_date: date, db=None) -> dict[str, float]:
+        scores: dict[str, float] = {}
+        for sid in universe:
+            rev = db.execute(
+                """SELECT revenue, revenue_yoy, year_month, announcement_date
+                   FROM monthly_revenue
+                   WHERE stock_id = ? AND announcement_date <= ?
+                   ORDER BY year_month DESC LIMIT ?""",
+                [sid, as_of_date, self.rev_months + 1],
+            ).fetchdf()
+
+            eps_rows = db.execute(
+                """SELECT eps, announcement_date
+                   FROM financials
+                   WHERE stock_id = ? AND announcement_date <= ?
+                   ORDER BY year_quarter DESC LIMIT 2""",
+                [sid, as_of_date],
+            ).fetchdf()
+
+            components = []
+
+            if len(rev) >= 2:
+                yoy_vals = rev["revenue_yoy"].dropna().tail(self.rev_months)
+                if not yoy_vals.empty:
+                    rev_score = zscore(yoy_vals.values)[-1] if len(yoy_vals) > 1 else float(yoy_vals.mean())
+                    components.append(rev_score * self.rev_weight)
+
+            if len(eps_rows) >= 2:
+                eps_q = eps_rows["eps"].iloc[0]
+                eps_last = eps_rows["eps"].iloc[1]
+                if eps_q is not None and eps_last is not None and eps_last != 0:
+                    eps_qoq = (float(eps_q) / float(eps_last)) - 1
+                    eps_score = zscore(np.array([eps_qoq]))[0]
+                    components.append(eps_score * self.eps_weight)
+
+            if components:
+                scores[sid] = float(np.sum(components))
+
+        if not scores:
+            return {}
+        vals = np.array(list(scores.values()))
+        if np.std(vals) == 0:
+            return {k: 0.0 for k in scores}
+        z = zscore(vals)
+        return {sid: float(z[i]) for i, sid in enumerate(scores)}
