@@ -1,0 +1,9 @@
+.env
+*.duckdb
+__pycache__/
+*.pyc
+.output/
+dist/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
