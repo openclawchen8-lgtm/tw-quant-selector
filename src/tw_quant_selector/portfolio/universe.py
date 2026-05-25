@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
+import pandas as pd
 import structlog
 
 log = structlog.get_logger()
@@ -51,7 +52,9 @@ def _filter_static(db, as_of_date: date, stocks_df):
     vals = db.execute(
         """SELECT v.stock_id, v.market_cap, s.industry, s.stock_name
            FROM valuations v JOIN stocks s ON v.stock_id = s.stock_id
-           WHERE v.trade_date = (SELECT MAX(trade_date) FROM valuations WHERE trade_date <= ?)""",
+           WHERE (v.stock_id, v.trade_date) IN (
+               SELECT stock_id, MAX(trade_date) FROM valuations WHERE trade_date <= ? GROUP BY stock_id
+           )""",
         [month_start],
     ).fetchdf()
 
@@ -68,7 +71,7 @@ def _filter_static(db, as_of_date: date, stocks_df):
         if any(kw in name for kw in excluded_keywords):
             continue
         cap = row.get("market_cap")
-        if cap is None or cap < Decimal("3000000000"):
+        if cap is None or (hasattr(cap, "__float__") and pd.isna(cap)) or cap < Decimal("3000000000"):
             continue
         candidates.append(sid)
     return [s for s in stocks_df.to_dict("records") if s["stock_id"] in set(candidates)]
@@ -89,15 +92,19 @@ def _filter_dynamic(db, as_of_date: date, candidates: list[dict]) -> list[dict]:
         ).fetchdf()
         if rows.empty:
             continue
-        avg_amount = rows["amount"].mean()
-        if avg_amount and avg_amount >= Decimal("10000000"):
+        avg_amount = float(rows["amount"].mean())
+        if avg_amount and avg_amount >= 10_000_000:
             result.append(sid)
     return [c for c in candidates if c["stock_id"] in set(result)]
 
 
 def _filter_delisted(candidates: list[dict], as_of_date: date) -> list[dict]:
-    return [c for c in candidates
-            if c.get("delist_date") is None or c["delist_date"] > as_of_date]
+    result = []
+    for c in candidates:
+        d = c.get("delist_date")
+        if d is None or str(d) == "NaT" or d > as_of_date:
+            result.append(c)
+    return result
 
 
 def _filter_suspended(db, as_of_date: date, candidates: list[dict]) -> list[dict]:

@@ -1,7 +1,7 @@
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
-import uuid
+import uuid, json
 import structlog
 import pandas as pd
 
@@ -127,7 +127,7 @@ def _save_backtest(db, run_id: str, metrics: dict):
                 total_return, cagr, sharpe, max_drawdown, calmar, turnover)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             [run_id, datetime.now(), metrics.get("start_date"), metrics.get("end_date"),
-             str(metrics.get("strategy_config", {})),
+             json.dumps(metrics.get("strategy_config", {})),
              metrics.get("total_return"), metrics.get("cagr"),
              metrics.get("sharpe"), metrics.get("max_drawdown"),
              metrics.get("calmar"), metrics.get("turnover")],

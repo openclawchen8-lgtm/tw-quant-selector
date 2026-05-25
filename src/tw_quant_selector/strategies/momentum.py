@@ -38,7 +38,9 @@ class MomentumStrategy(BaseStrategy):
             p1 = close[0]
             momentum = (p0 / p1) - 1 if p1 != 0 else 0
 
-            avg_vol = np.mean(volume[-20:]) if len(volume) >= 20 else np.mean(volume) or 1
+            vol_window = volume[-20:] if len(volume) >= 20 else volume
+            vol_clean = vol_window[~np.isnan(vol_window)]
+            avg_vol = float(np.mean(vol_clean)) if len(vol_clean) > 0 else 1.0
             liq_weight = log(max(avg_vol, 1))
 
             scores[sid] = momentum * liq_weight

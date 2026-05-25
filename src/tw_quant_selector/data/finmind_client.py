@@ -7,7 +7,7 @@ import structlog
 
 log = structlog.get_logger()
 
-FINMIND_BASE = "https://api.finmindtrade.com/api/v4"
+FINMIND_BASE = "https://api.finmindtrade.com/api/v4/data"
 RATE_LIMIT_PER_DAY = 600
 
 
@@ -17,6 +17,7 @@ class FinMindClient:
         if not self.token:
             raise ValueError("FINMIND_TOKEN is required")
         self._client = httpx.Client(timeout=60)
+        self._headers = {"Authorization": f"Bearer {self.token}"}
         self._daily_call_count = 0
         self._reset_date = date.today()
 
@@ -34,10 +35,10 @@ class FinMindClient:
 
     def _request(self, dataset: str, params: dict[str, Any] | None = None) -> list[dict]:
         self._check_rate_limit()
-        params = {"dataset": dataset, "token": self.token, **(params or {})}
+        params = {"dataset": dataset, **(params or {})}
         for attempt in range(3):
             try:
-                resp = self._client.get(FINMIND_BASE, params=params)
+                resp = self._client.get(FINMIND_BASE, headers=self._headers, params=params)
                 resp.raise_for_status()
                 data = resp.json()
                 if data.get("msg") == "success":
@@ -75,6 +76,16 @@ class FinMindClient:
 
     def get_dividend(self, stock_id: str, start: str, end: str) -> list[dict]:
         return self._request("TaiwanStockDividend", {
+            "data_id": stock_id, "start_date": start, "end_date": end
+        })
+
+    def get_per_pbr(self, stock_id: str, start: str, end: str) -> list[dict]:
+        return self._request("TaiwanStockPER", {
+            "data_id": stock_id, "start_date": start, "end_date": end
+        })
+
+    def get_balance_sheet(self, stock_id: str, start: str, end: str) -> list[dict]:
+        return self._request("TaiwanStockBalanceSheet", {
             "data_id": stock_id, "start_date": start, "end_date": end
         })
 

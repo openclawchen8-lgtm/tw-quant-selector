@@ -8,7 +8,7 @@ log = structlog.get_logger()
 
 
 def calc_adj_factor(close_before: float, close_after: float) -> float:
-    if close_after == 0:
+    if close_after == 0 or pd.isna(close_after) or pd.isna(close_before):
         return 1.0
     return close_before / close_after
 
@@ -70,12 +70,12 @@ def apply_all_adjustments(db):
         ).fetchdf()
         if df.empty:
             continue
-        adj = None
         cur_factor = Decimal("1.0")
         adj_col = []
         for _, row in df.iterrows():
-            if row["adj_factor"] is not None and row["adj_factor"] != 0:
-                cur_factor *= Decimal(str(row["adj_factor"]))
+            af = row["adj_factor"]
+            if af is not None and not pd.isna(af) and af != 0:
+                cur_factor *= Decimal(str(af))
             adj_col.append(cur_factor)
         for i in range(len(df)):
             conn.execute(

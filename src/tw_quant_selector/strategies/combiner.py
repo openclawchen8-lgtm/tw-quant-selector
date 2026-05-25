@@ -1,3 +1,4 @@
+import math
 from datetime import date
 from decimal import Decimal
 from typing import Any
@@ -91,13 +92,16 @@ def _save_signals(db, as_of_date, stock_scores, etf_scores, stock_ranked, etf_ra
                 if r["stock_id"] == sid:
                     rank = i + 1
                     break
+            if score is None or (isinstance(score, (float, np.floating)) and (math.isnan(score) or np.isnan(score))):
+                score_val = None
+            else:
+                score_val = round(Decimal(str(score)), 4)
             conn.execute(
                 """INSERT INTO signals (signal_date, stock_id, strategy, score, rank, is_selected)
                    VALUES (?, ?, 'composite', ?, ?, ?)
                    ON CONFLICT (signal_date, stock_id, strategy)
                    DO UPDATE SET score = excluded.score, rank = excluded.rank, is_selected = excluded.is_selected""",
-                [as_of_date, sid, round(Decimal(str(score)), 4) if score is not None else None,
-                 rank, sid in ranked_ids],
+                [as_of_date, sid, score_val, rank, sid in ranked_ids],
             )
         conn.commit()
     log.info("signals.saved", date=str(as_of_date), stocks=len(stock_ranked), etfs=len(etf_ranked))

@@ -25,7 +25,6 @@ class Position:
     avg_cost: Decimal
     is_etf: bool = False
 
-    @property
     def market_value(self, current_price: Decimal) -> Decimal:
         return current_price * self.shares
 
