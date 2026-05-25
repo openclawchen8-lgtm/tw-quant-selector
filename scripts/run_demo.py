@@ -47,22 +47,24 @@ with db.connection() as conn:
                      [sid, sid])
     conn.commit()
 
+today_iso = date.today().isoformat()
+
 print("📥 Fetching daily prices from FinMind...")
 update_daily_prices(db, client, all_ids, date(2023, 1, 2), date.today())
 
 print("📥 Fetching valuations (PER/PBR)...")
-update_valuations(db, client, all_ids, "2023-01-02", date.today().isoformat())
+update_valuations(db, client, all_ids, "2023-01-02", today_iso)
 
 print("📥 Fetching monthly revenue...")
-update_monthly_revenue(db, client, all_ids, "2020-01-01", date.today().isoformat())
+update_monthly_revenue(db, client, all_ids, "2020-01-01", today_iso)
 
 print("📥 Fetching financial statements & balance sheets...")
-update_financials(db, client, all_ids, "2020-01-01", date.today().isoformat())
+update_financials(db, client, all_ids, "2022-01-01", today_iso)
 
 print("📥 Fetching dividends & computing adjustments...")
 with db.connection() as conn:
     for sid in all_ids:
-        divs = client.get_dividend(sid, "2020-01-01", date.today().isoformat())
+        divs = client.get_dividend(sid, "2022-01-01", today_iso)
         if divs:
             adjustments = compute_dividend_adjustments(db, sid, divs)
             for adj in adjustments:
@@ -78,7 +80,7 @@ apply_all_adjustments(db)
 print("🧮 Computing market cap from prices & shares outstanding...")
 with db.connection() as conn:
     for sid in stock_ids:
-        bs = client.get_balance_sheet(sid, "2023-01-01", date.today().isoformat())
+        bs = client.get_balance_sheet(sid, "2024-01-01", today_iso)
         shares = None
         for r in bs:
             if r.get("type") == "OrdinaryShare" and r.get("value"):

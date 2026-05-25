@@ -36,7 +36,7 @@ class FinMindClient:
     def _request(self, dataset: str, params: dict[str, Any] | None = None) -> list[dict]:
         self._check_rate_limit()
         params = {"dataset": dataset, **(params or {})}
-        for attempt in range(3):
+        for attempt in range(2):
             try:
                 resp = self._client.get(FINMIND_BASE, headers=self._headers, params=params)
                 resp.raise_for_status()
@@ -45,14 +45,25 @@ class FinMindClient:
                     return data.get("data", [])
                 log.warning("finmind.api_error", dataset=dataset, msg=data.get("msg"))
                 return []
-            except (httpx.HTTPError, httpx.TimeoutException) as e:
-                if attempt < 2:
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 402:
+                    log.warning("finmind.quota_exhausted", dataset=dataset)
+                    return []
+                if attempt == 0:
                     wait = 2 ** attempt
                     log.warning("finmind.retry", dataset=dataset, attempt=attempt, wait=wait)
                     time.sleep(wait)
                 else:
                     log.error("finmind.failed", dataset=dataset, error=str(e))
-                    raise
+                    return []
+            except (httpx.TimeoutException, httpx.TransportError) as e:
+                if attempt == 0:
+                    wait = 2
+                    log.warning("finmind.retry", dataset=dataset, attempt=attempt, wait=wait)
+                    time.sleep(wait)
+                else:
+                    log.error("finmind.failed", dataset=dataset, error=str(e))
+                    return []
 
     def get_daily_prices(self, stock_id: str, start: date, end: date) -> list[dict]:
         return self._request("TaiwanStockPrice", {
