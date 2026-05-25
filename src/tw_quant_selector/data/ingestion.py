@@ -42,6 +42,11 @@ REVENUE_COLUMNS = {
 }
 
 
+def _clean_nan(v):
+    if isinstance(v, float) and np.isnan(v):
+        return None
+    return v
+
 def _upsert(conn, table: str, rows: list[dict], pk_cols: list[str]):
     if not rows:
         return 0
@@ -51,7 +56,7 @@ def _upsert(conn, table: str, rows: list[dict], pk_cols: list[str]):
     pk_condition = " AND ".join(f"{c} = ?" for c in pk_cols)
     count = 0
     for row in rows:
-        vals = [row.get(c) for c in cols]
+        vals = [_clean_nan(row.get(c)) for c in cols]
         pk_vals = [row.get(c) for c in pk_cols]
         conn.execute(f"DELETE FROM {table} WHERE {pk_condition}", pk_vals)
         conn.execute(f"INSERT INTO {table} ({col_names}) VALUES ({placeholders})", vals)

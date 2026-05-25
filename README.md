@@ -36,9 +36,11 @@ metrics = run_backtest(db, date(2020, 1, 1), date(2024, 12, 31))
 print(metrics)
 ```
 
+**4. run_demo
+```bash
 export FINMIND_TOKEN="xxx"
 cd ~/Projects/tw-quant-selector
 source .venv/bin/activate
 python scripts/run_demo.py
-
+```
 
