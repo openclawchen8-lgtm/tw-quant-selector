@@ -1,8 +1,14 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any, Optional
+import csv
+import io
+import os
 import uuid
-from fastapi import FastAPI, Query, HTTPException
-from fastapi.responses import HTMLResponse
+from pathlib import Path
+from fastapi import FastAPI, Query, HTTPException, Response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from tw_quant_selector.data.database import Database
@@ -11,7 +17,26 @@ from tw_quant_selector.strategies.combiner import compute_composite_scores, DEFA
 from tw_quant_selector.backtest.engine import run_backtest
 
 app = FastAPI(title="tw-quant-selector", version="1.0.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 db = Database()
+
+
+def api_response(data: Any, meta: dict[str, Any] | None = None, error: dict[str, Any] | None = None) -> dict:
+    return {
+        "data": data,
+        "meta": {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "data_as_of": None,
+            "request_id": str(uuid.uuid4()),
+            **(meta or {}),
+        },
+        "error": error,
+    }
 
 
 class HealthResponse(BaseModel):
@@ -25,6 +50,9 @@ class SignalItem(BaseModel):
     name: Optional[str] = None
     score: float
     rank: int
+    rank_change: Optional[int] = None
+    consecutive_days: Optional[int] = None
+    factor_scores: Optional[dict[str, float]] = None
 
 
 class SignalResponse(BaseModel):
@@ -50,7 +78,7 @@ class DataStatusResponse(BaseModel):
     coverage: dict = {}
 
 
-@app.get("/health", response_model=HealthResponse)
+@app.get("/health")
 def health():
     db_ok = True
     last = None
@@ -60,12 +88,12 @@ def health():
             last = row[0].isoformat()
     except Exception:
         db_ok = False
-    return HealthResponse(status="ok", db_connected=db_ok, last_update=last)
+    return api_response(HealthResponse(status="ok", db_connected=db_ok, last_update=last).model_dump())
 
 
-@app.get("/", response_class=HTMLResponse)
-def dashboard():
-    return HTMLResponse(_DASHBOARD_HTML)
+@app.get("/")
+def root_redirect():
+    return RedirectResponse(url="/docs")
 
 
 @app.get("/api/v1/dashboard")
@@ -84,7 +112,7 @@ def dashboard_data():
         """SELECT stock_id, COUNT(*) as days FROM daily_prices
            GROUP BY stock_id ORDER BY days DESC LIMIT 10"""
     ).fetchall()
-    return {
+    return api_response({
         "table_counts": stats,
         "price_date_range": {"min": str(price_range[0]) if price_range and price_range[0] else None,
                              "max": str(price_range[1]) if price_range and price_range[1] else None},
@@ -92,7 +120,7 @@ def dashboard_data():
                            "max": str(val_range[1]) if val_range and val_range[1] else None},
         "tracker": [{"dataset": r[0], "status": r[1], "count": r[2]} for r in tracker],
         "top_stocks": [{"stock_id": r[0], "days": r[1]} for r in top_volume],
-    }
+    })
 
 
 @app.get("/api/v1/stocks/by_dataset/{dataset}")
@@ -109,7 +137,7 @@ def stocks_by_dataset(dataset: str):
     rows = db.execute(
         f"SELECT s.stock_id, s.stock_name, s.market, COUNT(*) as cnt FROM {tbl} t JOIN stocks s ON s.stock_id = t.stock_id GROUP BY s.stock_id, s.stock_name, s.market ORDER BY cnt DESC LIMIT 100"
     ).fetchall()
-    return [{"stock_id": r[0], "name": r[1], "market": r[2], "count": r[3]} for r in rows]
+    return api_response([{"stock_id": r[0], "name": r[1], "market": r[2], "count": r[3]} for r in rows])
 
 
 @app.get("/api/v1/stocks/search")
@@ -119,7 +147,23 @@ def search_stocks(q: str = Query("", min_length=1)):
         "SELECT stock_id, stock_name, market, is_etf, industry FROM stocks WHERE stock_id LIKE ? OR stock_name LIKE ? LIMIT 20",
         [like, like]
     ).fetchall()
-    return [{"stock_id": r[0], "name": r[1], "market": r[2], "is_etf": bool(r[3]), "industry": r[4]} for r in rows]
+    return api_response([{"stock_id": r[0], "name": r[1], "market": r[2], "is_etf": bool(r[3]), "industry": r[4]} for r in rows])
+
+
+@app.get("/api/v1/stocks/prices")
+def stocks_prices(ids: str = Query(...)):
+    stock_ids = [s.strip() for s in ids.split(",") if s.strip()]
+    if not stock_ids:
+        raise HTTPException(400, "No stock IDs provided")
+    placeholders = ",".join(["?"] * len(stock_ids))
+    rows = db.execute(
+        f"SELECT dp.stock_id, s.stock_name, dp.close, dp.trade_date FROM daily_prices dp JOIN stocks s ON s.stock_id = dp.stock_id WHERE dp.stock_id IN ({placeholders}) AND dp.trade_date = (SELECT MAX(trade_date) FROM daily_prices WHERE stock_id = dp.stock_id)",
+        stock_ids
+    ).fetchall()
+    result = {}
+    for r in rows:
+        result[r[0]] = {"name": r[1], "close": float(r[2]) if r[2] else None, "date": str(r[3]) if r[3] else None}
+    return api_response(result)
 
 
 @app.get("/api/v1/stock/{stock_id}")
@@ -143,7 +187,7 @@ def stock_detail(stock_id: str):
         "SELECT year_month, revenue, revenue_yoy FROM monthly_revenue WHERE stock_id = ? ORDER BY year_month DESC LIMIT 12",
         [stock_id]
     ).fetchall()
-    return {
+    return api_response({
         "info": {"stock_id": info[0], "name": info[1], "market": info[2], "is_etf": info[3], "industry": info[4]},
         "prices": [{"d": str(r[0]), "o": float(r[1]) if r[1] else None, "h": float(r[2]) if r[2] else None,
                     "l": float(r[3]) if r[3] else None, "c": float(r[4]) if r[4] else None, "v": r[5]} for r in prices],
@@ -153,10 +197,153 @@ def stock_detail(stock_id: str):
                         "roe": float(r[3]) if r[3] else None, "gm": float(r[4]) if r[4] else None,
                         "de": float(r[5]) if r[5] else None} for r in fins],
         "revenue": [{"ym": r[0], "rev": r[1], "yoy": float(r[2]) if r[2] else None} for r in revs],
-    }
+    })
 
 
-@app.get("/api/v1/signals/latest", response_model=SignalResponse)
+@app.get("/api/v1/stock/{stock_id}/factor-history")
+def stock_factor_history(stock_id: str):
+    rows = db.execute(
+        """SELECT signal_date, strategy, score, rank
+           FROM signals WHERE stock_id = ? ORDER BY signal_date DESC LIMIT 52""",
+        [stock_id]
+    ).fetchall()
+    return api_response([{
+        "date": str(r[0]), "strategy": r[1], "score": float(r[2]) if r[2] else None,
+        "rank": r[3] or 0,
+    } for r in rows])
+
+
+@app.get("/api/v1/monitor/datasets")
+def monitor_datasets():
+    rows = db.execute(
+        """SELECT dataset, last_status, COUNT(*) as cnt,
+                  MAX(last_updated) as last_upd
+           FROM ingestion_tracker
+           WHERE last_updated IS NOT NULL
+           GROUP BY dataset, last_status"""
+    ).fetchall()
+    return api_response([{
+        "dataset": r[0], "status": r[1], "count": r[2],
+        "last_updated": str(r[3]) if r[3] else None,
+    } for r in rows])
+
+
+@app.get("/api/v1/monitor/logs")
+def monitor_logs():
+    rows = db.execute(
+        """SELECT id, module, event, severity, created_at
+           FROM operation_logs WHERE created_at >= CURRENT_DATE - 7
+           ORDER BY created_at DESC LIMIT 100"""
+    ).fetchall()
+    return api_response([{
+        "id": r[0], "module": r[1], "event": r[2],
+        "severity": r[3], "timestamp": str(r[4]) if r[4] else None,
+    } for r in rows])
+
+
+@app.get("/api/v1/signals/export.csv")
+def export_signals_csv(
+    date: Optional[str] = Query(None),
+    strategy: str = Query("composite"),
+    top_n: int = Query(200, ge=1, le=500),
+):
+    sd = date
+    if not sd:
+        row = db.execute("SELECT MAX(signal_date) FROM signals WHERE strategy = ?", [strategy]).fetchone()
+        if row and row[0]:
+            sd = str(row[0])
+    items = []
+    if sd:
+        rows = db.execute(
+            """SELECT s.stock_id, st.stock_name, s.score, s.rank
+               FROM signals s LEFT JOIN stocks st ON s.stock_id = st.stock_id
+               WHERE s.signal_date = ? AND s.strategy = ?
+               ORDER BY s.rank LIMIT ?""",
+            [sd, strategy, top_n]
+        ).fetchall()
+        for r in rows:
+            items.append({"stock_id": r[0], "name": r[1] or "", "score": f"{float(r[2]):.4f}" if r[2] else "", "rank": r[3] or 0})
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=["rank", "stock_id", "name", "score"])
+    writer.writeheader()
+    writer.writerows(items)
+    fname = f"tw_signals_{sd.replace('-', '')}.csv" if sd else "tw_signals.csv"
+    return Response(content=buf.getvalue(), media_type="text/csv",
+                    headers={"Content-Disposition": f"attachment; filename={fname}"})
+
+
+@app.get("/api/v1/signals/export.json")
+def export_signals_json(
+    date: Optional[str] = Query(None),
+    strategy: str = Query("composite"),
+    top_n: int = Query(200, ge=1, le=500),
+):
+    sd = date
+    if not sd:
+        row = db.execute("SELECT MAX(signal_date) FROM signals WHERE strategy = ?", [strategy]).fetchone()
+        if row and row[0]:
+            sd = str(row[0])
+    items = []
+    if sd:
+        rows = db.execute(
+            """SELECT s.stock_id, st.stock_name, s.score, s.rank
+               FROM signals s LEFT JOIN stocks st ON s.stock_id = st.stock_id
+               WHERE s.signal_date = ? AND s.strategy = ?
+               ORDER BY s.rank LIMIT ?""",
+            [sd, strategy, top_n]
+        ).fetchall()
+        for r in rows:
+            items.append({"stock_id": r[0], "name": r[1] or "", "score": float(r[2]) if r[2] else None, "rank": r[3] or 0})
+    return api_response({"signals": items, "date": sd, "strategy": strategy})
+
+
+@app.get("/api/v1/backtest/{run_id}/detail")
+def get_backtest_detail(run_id: str):
+    row = db.execute("SELECT * FROM backtest_runs WHERE run_id = ?", [run_id]).fetchone()
+    if not row:
+        raise HTTPException(404, "Backtest run not found")
+    return api_response({
+        "run_id": run_id,
+        "created_at": str(row[1]) if row[1] else None,
+        "start_date": str(row[2]) if row[2] else None,
+        "end_date": str(row[3]) if row[3] else None,
+        "metrics": {
+            "total_return": float(row[6]) if row[6] else None,
+            "cagr": float(row[7]) if row[7] else None,
+            "sharpe": float(row[8]) if row[8] else None,
+            "max_drawdown": float(row[9]) if row[9] else None,
+            "calmar": float(row[10]) if row[10] else None,
+        },
+    })
+
+
+@app.get("/api/v1/signals")
+def signals_query(
+    date: Optional[str] = Query(None),
+    strategy: str = Query("composite"),
+    top_n: int = Query(50, ge=1, le=200),
+    include_etf: bool = Query(False),
+):
+    if date:
+        signal_date = date
+    else:
+        row = db.execute("SELECT MAX(signal_date) FROM signals WHERE strategy = ?", [strategy]).fetchone()
+        if not row or not row[0]:
+            raise HTTPException(404, "No signals found")
+        signal_date = row[0].isoformat() if hasattr(row[0], 'isoformat') else str(row[0])
+    return api_response(_get_signals(signal_date, strategy, top_n, include_etf).model_dump())
+
+
+@app.get("/api/v1/signals/calendar")
+def signals_calendar():
+    rows = db.execute(
+        "SELECT DISTINCT signal_date FROM signals ORDER BY signal_date DESC LIMIT 365"
+    ).fetchall()
+    dates = [str(r[0]) for r in rows]
+    return api_response(dates)
+
+
+@app.get("/api/v1/signals/latest")
 def latest_signals(
     strategy: str = Query("composite"),
     top_n: int = Query(20, ge=1, le=100),
@@ -165,17 +352,17 @@ def latest_signals(
     latest = db.execute("SELECT MAX(signal_date) FROM signals WHERE strategy = ?", [strategy]).fetchone()
     if not latest or not latest[0]:
         raise HTTPException(404, "No signals found")
-    return _get_signals(latest[0], strategy, top_n, include_etf)
+    return api_response(_get_signals(latest[0], strategy, top_n, include_etf).model_dump())
 
 
-@app.get("/api/v1/signals/{signal_date}", response_model=SignalResponse)
+@app.get("/api/v1/signals/{signal_date}")
 def signals_by_date(
     signal_date: date,
     strategy: str = Query("composite"),
     top_n: int = Query(20, ge=1, le=100),
     include_etf: bool = Query(False),
 ):
-    return _get_signals(signal_date, strategy, top_n, include_etf)
+    return api_response(_get_signals(signal_date, strategy, top_n, include_etf).model_dump())
 
 
 def _get_signals(signal_date: date, strategy: str, top_n: int, include_etf: bool) -> SignalResponse:
@@ -207,7 +394,7 @@ def start_backtest(req: BacktestRequest):
     end = date.fromisoformat(req.end_date) if req.end_date else None
     weights = req.strategy_weights or DEFAULT_WEIGHTS
     run_backtest(db, start, end, strategy_weights=weights)
-    return BacktestResponse(run_id=run_id, status="completed")
+    return api_response(BacktestResponse(run_id=run_id, status="completed").model_dump())
 
 
 @app.get("/api/v1/backtest/history")
@@ -216,14 +403,14 @@ def backtest_history():
         """SELECT run_id, run_at, start_date, end_date, total_return, cagr, sharpe, max_drawdown
            FROM backtest_runs ORDER BY run_at DESC LIMIT 20"""
     ).fetchall()
-    return [{
+    return api_response([{
         "run_id": r[0], "created_at": str(r[1]) if r[1] else None,
         "start_date": str(r[2]) if r[2] else None, "end_date": str(r[3]) if r[3] else None,
         "total_return": float(r[4]) if r[4] else None,
         "cagr": float(r[5]) if r[5] else None,
         "sharpe": float(r[6]) if r[6] else None,
         "max_drawdown": float(r[7]) if r[7] else None,
-    } for r in rows]
+    } for r in rows])
 
 
 @app.get("/api/v1/backtest/{run_id}")
@@ -233,31 +420,31 @@ def get_backtest(run_id: str):
     ).fetchone()
     if not row:
         raise HTTPException(404, "Backtest run not found")
-    return {"status": "completed", "run_id": run_id, "metrics": {
+    return api_response({"status": "completed", "run_id": run_id, "metrics": {
         "total_return": float(row[6]) if row[6] else None,
         "cagr": float(row[7]) if row[7] else None,
         "sharpe": float(row[8]) if row[8] else None,
         "max_drawdown": float(row[9]) if row[9] else None,
         "calmar": float(row[10]) if row[10] else None,
-    }}
+    }})
 
 
 @app.get("/api/v1/data/status")
 def data_status():
     latest_price = db.execute("SELECT MAX(trade_date) FROM daily_prices").fetchone()
     stock_count = db.execute("SELECT COUNT(*) FROM stocks").fetchone()
-    return {
+    return api_response({
         "last_price_update": latest_price[0].isoformat() if latest_price and latest_price[0] else None,
         "stock_count": stock_count[0] if stock_count else 0,
         "missing_dates": [],
         "coverage": {},
-    }
+    })
 
 
 @app.get("/api/v1/strategies/config")
 def strategy_config():
     schemas = get_strategy_schemas()
-    return {
+    return api_response({
         "strategies": {
             name: {
                 "params": {k: v["default"] for k, v in p.items()},
@@ -273,7 +460,7 @@ def strategy_config():
             "top_n_stocks": 20,
             "top_n_etfs": 3,
         },
-    }
+    })
 
 
 class StrategyRunRequest(BaseModel):
@@ -295,7 +482,23 @@ def run_strategies(req: StrategyRunRequest):
         top_n_stocks=req.top_n_stocks,
         top_n_etfs=req.top_n_etfs,
     )
-    return result
+    return api_response(result)
+
+
+# ── Serve Built Frontend (Docker / production) ──
+_frontend_dist = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "dist"
+if _frontend_dist.is_dir():
+    app.mount("/assets", StaticFiles(directory=str(_frontend_dist / "assets")), name="frontend_assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa(full_path: str):
+        if full_path.startswith("api/") or full_path.startswith("health") or full_path in ("docs", "redoc", "openapi.json"):
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"error": {"code": 404, "message": "Not found"}}, status_code=404)
+        index = _frontend_dist / "index.html"
+        if index.exists():
+            return HTMLResponse(index.read_text(encoding="utf-8"))
+        return HTMLResponse("<h1>Frontend not built</h1>", status_code=200)
 
 
 _DASHBOARD_HTML = """<!DOCTYPE html>

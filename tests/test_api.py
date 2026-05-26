@@ -22,8 +22,11 @@ def teardown_module():
 def test_health():
     resp = client.get("/health")
     assert resp.status_code == 200
-    data = resp.json()
-    assert data["status"] == "ok"
+    body = resp.json()
+    assert "data" in body
+    assert body["data"]["status"] == "ok"
+    assert "meta" in body
+    assert "request_id" in body["meta"]
 
 
 def test_latest_signals_no_data():
@@ -34,5 +37,6 @@ def test_latest_signals_no_data():
 def test_data_status():
     resp = client.get("/api/v1/data/status")
     assert resp.status_code == 200
-    data = resp.json()
-    assert "last_price_update" in data
+    body = resp.json()
+    assert "data" in body
+    assert "last_price_update" in body["data"]

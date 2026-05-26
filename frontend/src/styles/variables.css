@@ -1,0 +1,73 @@
+:root {
+  /* ── Background layers (5) ── */
+  --bg-base:     #0d0f14;
+  --bg-surface:  #141720;
+  --bg-elevated: #1c2030;
+  --bg-overlay:  #242840;
+  --bg-border:   #2a2f42;
+
+  /* ── Text layers (4) ── */
+  --text-primary:   #e8eaf0;
+  --text-secondary: #8b90a4;
+  --text-muted:     #545870;
+  --text-inverse:   #0d0f14;
+
+  /* ── Semantic colors ── */
+  --color-bull:      #00c896;
+  --color-bull-dim:  #003d2e;
+  --color-bull-text: #00e8ac;
+  --color-bear:      #ff4d6a;
+  --color-bear-dim:  #3d0014;
+  --color-bear-text: #ff7088;
+  --color-neutral:     #f5a623;
+  --color-neutral-dim: #3d2900;
+  --color-accent:      #4f8ef7;
+  --color-accent-dim:  #0a1f4d;
+
+  /* ── Factor colors ── */
+  --color-momentum: #a78bfa;
+  --color-value:    #34d399;
+  --color-quality:  #f59e0b;
+  --color-growth:   #38bdf8;
+
+  /* ── Spacing ── */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* ── Border radius ── */
+  --radius-sm:   2px;
+  --radius-tag:  4px;
+  --radius-btn:  6px;
+  --radius-card: 8px;
+  --radius-modal: 12px;
+
+  /* ── Typography ── */
+  --font-data: 'IBM Plex Mono', monospace;
+  --font-ui:   'Syne', sans-serif;
+
+  --font-size-xs:  11px;
+  --font-size-sm:  13px;
+  --font-size-md:  15px;
+  --font-size-lg:  18px;
+  --font-size-xl:  24px;
+  --font-size-2xl: 32px;
+  --font-size-3xl: 48px;
+
+  /* ── Breakpoints (for reference in JS/CSS media) ── */
+  --bp-xl: 1440px;
+  --bp-lg: 1024px;
+  --bp-md: 768px;
+  --bp-sm: 640px;
+
+  /* ── Sidebar ── */
+  --sidebar-expanded: 240px;
+  --sidebar-collapsed: 56px;
+}
