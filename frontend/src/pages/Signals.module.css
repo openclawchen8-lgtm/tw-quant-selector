@@ -86,7 +86,9 @@
 .dense .dataRow { height: 36px; }
 .dataRow:hover td { background: var(--bg-elevated); transition: background 0.1s; }
 .dataRow:focus { outline: none; }
-.dataRow:focus td { border-left: 2px solid var(--color-accent); }
+
+.focused td { background: var(--bg-elevated); }
+.focused td:first-child { border-left: 2px solid var(--color-accent); }
 
 .rankCell { font-weight: 600; font-size: var(--font-size-md); }
 .stockLink { color: var(--color-accent); cursor: pointer; }

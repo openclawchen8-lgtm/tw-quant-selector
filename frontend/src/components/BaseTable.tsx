@@ -103,7 +103,7 @@ export default function BaseTable<T extends Record<string, any>>({
       case 'Enter': {
         e.preventDefault();
         const row = table.getRowModel().rows[focusIndex];
-        if (row && !(row.original as any)._type === DIVIDER_TYPE) {
+        if (row && (row.original as any)._type !== DIVIDER_TYPE) {
           if (renderRowDetail) toggleExpand(row.id);
           else if (onRowClick) onRowClick(row.original as T);
         }

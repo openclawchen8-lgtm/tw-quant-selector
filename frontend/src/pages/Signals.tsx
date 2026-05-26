@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { fetchLatestSignals } from '../api/client';
 import FactorMiniBar from '../components/FactorMiniBar';
@@ -22,9 +22,11 @@ export default function Signals() {
   const [showEtf, setShowEtf] = useState(true);
   const [dense, setDense] = useState(false);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [focusedIndex, setFocusedIndex] = useState(-1);
+  const tableRef = useRef<HTMLTableElement>(null);
 
   useEffect(() => {
-    fetchLatestSignals(true).then((d) => { setData(d); setLoading(false); }).catch(() => setLoading(false));
+    fetchLatestSignals(true).then((d: any) => { setData(d); setLoading(false); }).catch(() => setLoading(false));
   }, []);
 
   const allItems = [...(data?.stocks || []), ...(showEtf ? data?.etfs || [] : [])];
@@ -38,11 +40,44 @@ export default function Signals() {
   const stockRows = sorted.filter((s) => !etfIds.has(s.stock_id));
   const etfRows = sorted.filter((s) => etfIds.has(s.stock_id));
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (loading || !sorted.length) return;
+      if (['ArrowUp', 'ArrowDown', 'Enter', 'Escape'].includes(e.key)) {
+        e.preventDefault();
+        if (e.key === 'ArrowDown') {
+          setFocusedIndex(prev => Math.min(prev + 1, sorted.length - 1));
+        } else if (e.key === 'ArrowUp') {
+          setFocusedIndex(prev => Math.max(prev - 1, 0));
+        } else if (e.key === 'Enter') {
+          if (focusedIndex >= 0) {
+            const sid = sorted[focusedIndex].stock_id;
+            setExpandedRow(prev => prev === sid ? null : sid);
+          }
+        } else if (e.key === 'Escape') {
+          setExpandedRow(null);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [loading, sorted, focusedIndex]);
+
+  useEffect(() => {
+    if (focusedIndex >= 0 && tableRef.current) {
+      const rows = tableRef.current.querySelectorAll('tr[data-stock-id]');
+      const target = rows[focusedIndex];
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+  }, [focusedIndex]);
+
   const [showExport, setShowExport] = useState(false);
   const [exporting, setExporting] = useState(false);
   const today = data?.date || new Date().toISOString().slice(0, 10);
 
-  const handleExport = async (format: 'csv' | 'json', columns: string[]) => {
+  const handleExport = async (format: 'csv' | 'json', _columns: string[]) => {
     setExporting(true);
     const dateStr = today.replace(/-/g, '');
     const url = `http://localhost:8000/api/v1/signals/export.${format}${format === 'csv' ? '' : '?'}`;
@@ -121,7 +156,7 @@ export default function Signals() {
         </div>
       ) : (
         <div className={styles.tableWrapper}>
-          <table className={`${styles.table} ${dense ? styles.dense : ''}`}>
+          <table className={`${styles.table} ${dense ? styles.dense : ''}`} ref={tableRef}>
             <thead>
               <tr>
                 <th style={{ width: 48 }} data-type="number" onClick={() => handleSort('rank')}>
@@ -151,6 +186,7 @@ export default function Signals() {
                   navigate={navigate}
                   expanded={expandedRow === item.stock_id}
                   onToggle={() => setExpandedRow(expandedRow === item.stock_id ? null : item.stock_id)}
+                  isFocused={sorted[focusedIndex]?.stock_id === item.stock_id}
                 />
               ))}
               {etfRows.length > 0 && (
@@ -160,10 +196,11 @@ export default function Signals() {
                 <SignalRow
                   key={item.stock_id}
                   item={item}
-                  index={i}
+                  index={i + stockRows.length}
                   navigate={navigate}
                   expanded={expandedRow === item.stock_id}
                   onToggle={() => setExpandedRow(expandedRow === item.stock_id ? null : item.stock_id)}
+                  isFocused={sorted[focusedIndex]?.stock_id === item.stock_id}
                 />
               ))}
             </tbody>
@@ -192,9 +229,9 @@ export default function Signals() {
   );
 }
 
-function SignalRow({ item, index, navigate, expanded, onToggle }: {
+function SignalRow({ item, index, navigate, expanded, onToggle, isFocused }: {
   item: SignalItem; index: number; navigate: (p: string) => void;
-  expanded: boolean; onToggle: () => void;
+  expanded: boolean; onToggle: () => void; isFocused: boolean;
 }) {
   const rankChange = index === 0 ? 2 : index === 1 ? -1 : index === 2 ? 0 : null;
   const rankChangeStr = rankChange === null ? '' : rankChange > 0 ? `▲${rankChange}` : rankChange < 0 ? `▼${Math.abs(rankChange)}` : '—';
@@ -203,9 +240,10 @@ function SignalRow({ item, index, navigate, expanded, onToggle }: {
     <>
       <tr
         tabIndex={0}
-        className={styles.dataRow}
+        className={`${styles.dataRow} ${isFocused ? styles.focused : ''}`}
         onClick={onToggle}
         onKeyDown={(e) => { if (e.key === 'Enter') onToggle(); if (e.key === 'Escape') onToggle(); }}
+        data-stock-id={item.stock_id}
       >
         <td data-type="number" className={styles.rankCell}>#{item.rank}</td>
         <td data-type="number" style={{ color: rankChange && rankChange > 0 ? 'var(--color-bull-text)' : rankChange && rankChange < 0 ? 'var(--color-bear-text)' : 'var(--text-muted)' }}>

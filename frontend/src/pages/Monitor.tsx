@@ -13,7 +13,7 @@ export default function Monitor() {
   const [datasets, setDatasets] = useState<DatasetInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
-  const intervalRef = useRef<ReturnType<typeof setInterval>>();
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
 
   const load = () => {
@@ -33,7 +33,7 @@ export default function Monitor() {
     intervalRef.current = setInterval(load, 60_000);
     return () => {
       mountedRef.current = false;
-      clearInterval(intervalRef.current);
+      if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, []);
 
@@ -65,6 +65,7 @@ export default function Monitor() {
     return (
       <div className={styles.page}>
         <EmptyState
+          title="連線錯誤"
           icon="📡"
           message="無法取得監控資料，後端可能尚未啟動"
           actionLabel="重試"

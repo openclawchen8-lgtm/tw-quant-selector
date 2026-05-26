@@ -66,7 +66,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   );
 }
 
-function ToastItem({ id, message, severity, duration, onDismiss }: Toast & { onDismiss: () => void }) {
+function ToastItem({ id: _id, message, severity, duration, onDismiss }: Toast & { onDismiss: () => void }) {
   useEffect(() => {
     if (duration == null) return;
     const timer = setTimeout(onDismiss, duration);

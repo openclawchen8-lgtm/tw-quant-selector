@@ -25,7 +25,7 @@ export default function StockDetail() {
   useEffect(() => {
     if (!id) return;
     setLoading(true);
-    fetchStockDetail(id).then((d) => { setData(d); setLoading(false); }).catch(() => setLoading(false));
+    fetchStockDetail(id).then((d: any) => { setData(d); setLoading(false); }).catch(() => setLoading(false));
   }, [id]);
 
   if (loading) {

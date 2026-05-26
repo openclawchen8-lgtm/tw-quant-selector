@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchDashboard, fetchLatestSignals, type DashboardData } from '../api/client';
+import { fetchLatestSignals } from '../api/client';
 import StatCard from '../components/StatCard';
 import FactorMiniBar from '../components/FactorMiniBar';
 import styles from './Dashboard.module.css';
@@ -20,23 +20,19 @@ interface SignalsData {
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const [dash, setDash] = useState<DashboardData | null>(null);
   const [signals, setSignals] = useState<SignalsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [sortKey, setSortKey] = useState<string>('score');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [focusedIndex, setFocusedIndex] = useState(-1);
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [d, s] = await Promise.all([
-        fetchDashboard(),
-        fetchLatestSignals(true).catch(() => null),
-      ]);
-      setDash(d);
-      setSignals(s);
+      const s = await fetchLatestSignals(true).catch(() => null);
+      setSignals(s as SignalsData | null);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -50,15 +46,47 @@ export default function Dashboard() {
   const weekday = ['日', '一', '二', '三', '四', '五', '六'][today.getDay()];
 
   const allItems = [...(signals?.stocks || []), ...(signals?.etfs || [])];
-  const sorted = [...allItems].sort((a, b) => {
-    const mul = sortDir === 'asc' ? 1 : -1;
-    if (sortKey === 'rank') return (a.rank - b.rank) * mul;
-    return (a.score - b.score) * mul;
-  });
+  const sorted = [...allItems].sort((a, b) => a.rank - b.rank);
 
   const etfIds = new Set(signals?.etfs?.map((e) => e.stock_id) || []);
   const stockItems = sorted.filter((s) => !etfIds.has(s.stock_id));
   const etfItems = sorted.filter((s) => etfIds.has(s.stock_id));
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (loading || !sorted.length) return;
+      if (['ArrowUp', 'ArrowDown', 'Enter', 'Escape'].includes(e.key)) {
+        // Only prevent default if we are focusing the table or no other input is focused
+        if (document.activeElement?.tagName !== 'INPUT') {
+          e.preventDefault();
+          if (e.key === 'ArrowDown') {
+            setFocusedIndex(prev => Math.min(prev + 1, sorted.length - 1));
+          } else if (e.key === 'ArrowUp') {
+            setFocusedIndex(prev => Math.max(prev - 1, 0));
+          } else if (e.key === 'Enter') {
+            if (focusedIndex >= 0) {
+              const sid = sorted[focusedIndex].stock_id;
+              setExpandedRow(prev => prev === sid ? null : sid);
+            }
+          } else if (e.key === 'Escape') {
+            setExpandedRow(null);
+          }
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [loading, sorted, focusedIndex]);
+
+  useEffect(() => {
+    if (focusedIndex >= 0 && tableRef.current) {
+      const rows = tableRef.current.querySelectorAll('tr[data-stock-id]');
+      const target = rows[focusedIndex];
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+  }, [focusedIndex]);
 
   return (
     <div className={styles.page}>
@@ -147,7 +175,7 @@ export default function Dashboard() {
         </div>
       ) : (
         <div className={styles.tableWrapper}>
-          <table className={styles.table} role="grid" aria-label="最新選股訊號表格">
+          <table className={styles.table} role="grid" aria-label="最新選股訊號表格" ref={tableRef}>
             <thead>
               <tr>
                 <th style={{ width: 48 }} data-type="number">排名</th>
@@ -164,7 +192,14 @@ export default function Dashboard() {
             <tbody>
               {/* Stocks */}
               {stockItems.map((item) => (
-                <SignalRow key={item.stock_id} item={item} navigate={navigate} />
+                <SignalRow
+                  key={item.stock_id}
+                  item={item}
+                  navigate={navigate}
+                  isFocused={sorted[focusedIndex]?.stock_id === item.stock_id}
+                  expanded={expandedRow === item.stock_id}
+                  onToggle={() => setExpandedRow(prev => prev === item.stock_id ? null : item.stock_id)}
+                />
               ))}
               {/* ETF separator */}
               {etfItems.length > 0 && (
@@ -173,7 +208,14 @@ export default function Dashboard() {
                 </tr>
               )}
               {etfItems.map((item) => (
-                <SignalRow key={item.stock_id} item={item} navigate={navigate} />
+                <SignalRow
+                  key={item.stock_id}
+                  item={item}
+                  navigate={navigate}
+                  isFocused={sorted[focusedIndex]?.stock_id === item.stock_id}
+                  expanded={expandedRow === item.stock_id}
+                  onToggle={() => setExpandedRow(prev => prev === item.stock_id ? null : item.stock_id)}
+                />
               ))}
             </tbody>
           </table>
@@ -225,15 +267,18 @@ export default function Dashboard() {
   );
 }
 
-function SignalRow({ item, navigate }: { item: SignalItem; navigate: (p: string) => void }) {
-  const [expanded, setExpanded] = useState(false);
+function SignalRow({ item, navigate, isFocused, expanded, onToggle }: {
+  item: SignalItem; navigate: (p: string) => void;
+  isFocused: boolean; expanded: boolean; onToggle: () => void;
+}) {
   return (
     <>
       <tr
         tabIndex={0}
-        className={styles.dataRow}
-        onClick={() => setExpanded((e) => !e)}
-        onKeyDown={(e) => { if (e.key === 'Enter') setExpanded((x) => !x); if (e.key === 'Escape') setExpanded(false); }}
+        className={`${styles.dataRow} ${isFocused ? styles.focused : ''}`}
+        onClick={onToggle}
+        onKeyDown={(e) => { if (e.key === 'Enter') onToggle(); if (e.key === 'Escape') onToggle(); }}
+        data-stock-id={item.stock_id}
       >
         <td data-type="number" className={styles.rankCell}>#{item.rank}</td>
         <td>

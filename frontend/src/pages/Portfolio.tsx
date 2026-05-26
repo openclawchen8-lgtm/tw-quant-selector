@@ -14,7 +14,7 @@ async function apiFetch<T>(path: string): Promise<T> {
 interface Lot {
   id: string;
   stock_id: string;
-  date: string; // YYYY-MM-DD
+  date: string;
   shares: number;
   cost: number;
 }
@@ -34,7 +34,7 @@ function loadLots(): Lot[] {
   try {
     const old = localStorage.getItem('tw_quant_portfolio');
     if (old) {
-      const oldData: { id?: string; stock_id: string; shares: number; cost: number }[] = JSON.parse(old);
+      const oldData: { id?: string; stock_id: string; date?: string; shares: number; cost: number }[] = JSON.parse(old);
       if (oldData.length > 0) {
         const migrated = oldData.map((h) => {
           const today = new Date().toISOString().split('T')[0];

@@ -103,6 +103,22 @@ CREATE TABLE IF NOT EXISTS backtest_positions (
     PRIMARY KEY (run_id, trade_date, stock_id)
 );
 
+CREATE TABLE IF NOT EXISTS backtest_equity (
+    run_id          VARCHAR NOT NULL,
+    trade_date      DATE NOT NULL,
+    portfolio_value DECIMAL(18,2),
+    benchmark_value DECIMAL(18,2),
+    drawdown        DECIMAL(8,4),
+    PRIMARY KEY (run_id, trade_date)
+);
+
+CREATE TABLE IF NOT EXISTS alert_settings (
+    key             VARCHAR PRIMARY KEY,
+    value           VARCHAR,
+    is_sensitive    BOOLEAN DEFAULT FALSE,
+    updated_at      TIMESTAMP DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS ingestion_tracker (
     stock_id        VARCHAR NOT NULL,
     dataset         VARCHAR NOT NULL,
@@ -141,6 +157,22 @@ class Database:
 
     def execute(self, query: str, params: list | None = None):
         return self.connect().execute(query, params or [])
+
+    def change_path(self, new_path: str):
+        # Validate path
+        p = Path(new_path)
+        if p.is_dir():
+            p = p / "tw_quant.duckdb"
+        
+        # Security check: avoid sensitive dirs
+        abs_p = str(p.absolute())
+        if any(bad in abs_p for bad in ["/etc", "/root", "/var/log"]):
+            raise ValueError("Invalid or restricted path")
+
+        self.close()
+        self.db_path = abs_p
+        self.init_db()
+        return self.db_path
 
     def init_db(self):
         with self.connection() as conn:

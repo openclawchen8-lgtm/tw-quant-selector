@@ -78,6 +78,99 @@ class DataStatusResponse(BaseModel):
     coverage: dict = {}
 
 
+class AlertSettingsItem(BaseModel):
+    key: str
+    value: Optional[str] = None
+    is_env_set: bool = False
+    is_sensitive: bool = False
+
+
+ALERT_KEYS = [
+    "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID",
+    "SMTP_SERVER", "SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD",
+    "EMAIL_SENDER", "EMAIL_RECIPIENT",
+    "PL_THRESHOLD", "PL_PERCENT_THRESHOLD"
+]
+SENSITIVE_KEYS = ["TELEGRAM_BOT_TOKEN", "SMTP_PASSWORD"]
+
+
+@app.get("/api/v1/settings/alerts")
+def get_alert_settings():
+    db_settings = {r[0]: r[1] for r in db.execute("SELECT key, value FROM alert_settings").fetchall()}
+    results = []
+    for k in ALERT_KEYS:
+        env_val = os.getenv(k)
+        is_env = env_val is not None
+        val = env_val if is_env else db_settings.get(k)
+        is_sensitive = k in SENSITIVE_KEYS
+        
+        display_val = val
+        if is_sensitive and val:
+            display_val = "********"
+            
+        results.append(AlertSettingsItem(
+            key=k,
+            value=display_val,
+            is_env_set=is_env,
+            is_sensitive=is_sensitive
+        ))
+    return api_response(results)
+
+
+@app.post("/api/v1/settings/alerts")
+def update_alert_settings(settings: dict[str, str]):
+    with db.connection() as conn:
+        for k, v in settings.items():
+            if k not in ALERT_KEYS:
+                continue
+            # Skip if set by env
+            if os.getenv(k) is not None:
+                continue
+            
+            is_sensitive = k in SENSITIVE_KEYS
+            conn.execute(
+                "INSERT INTO alert_settings (key, value, is_sensitive, updated_at) VALUES (?, ?, ?, now()) "
+                "ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = now()",
+                [k, v, is_sensitive]
+            )
+        conn.commit()
+    return api_response({"status": "updated"})
+
+
+@app.post("/api/v1/settings/test-alert")
+def test_alert():
+    from tw_quant_selector.monitoring.alerting import AlertManager
+    manager = AlertManager(db)
+    try:
+        manager.send_notification(
+            "[tw-quant-selector] 測試告警",
+            "這是一封測試告警郵件/訊息，如果您收到此訊息，表示設定正確。"
+        )
+        return api_response({"status": "sent"})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/settings/db-path")
+def get_db_path():
+    return api_response({
+        "path": db.db_path,
+        "is_env_set": os.getenv("DUCKDB_PATH") is not None
+    })
+
+
+@app.post("/api/v1/settings/db-path")
+def update_db_path(data: dict[str, str]):
+    new_path = data.get("path")
+    if not new_path:
+        raise HTTPException(400, "Path is required")
+    try:
+        updated_path = db.change_path(new_path)
+        return api_response({"path": updated_path})
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
 @app.get("/health")
 def health():
     db_ok = True
@@ -315,6 +408,20 @@ def get_backtest_detail(run_id: str):
             "calmar": float(row[10]) if row[10] else None,
         },
     })
+
+
+@app.get("/api/v1/backtest/{run_id}/equity")
+def get_backtest_equity(run_id: str):
+    rows = db.execute(
+        "SELECT trade_date, portfolio_value, benchmark_value, drawdown FROM backtest_equity WHERE run_id = ? ORDER BY trade_date",
+        [run_id]
+    ).fetchall()
+    return api_response([{
+        "date": str(r[0]),
+        "value": float(r[1]) if r[1] else None,
+        "benchmark": float(r[2]) if r[2] else None,
+        "drawdown": float(r[3]) if r[3] else None,
+    } for r in rows])
 
 
 @app.get("/api/v1/signals")

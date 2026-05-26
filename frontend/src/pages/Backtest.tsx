@@ -1,6 +1,9 @@
-import { useState, useEffect } from 'react';
-import { DesktopOnly, MobileMessage } from '../utils/responsive';
+import { useState, useEffect, useRef } from 'react';
+import { createChart, ColorType, LineSeries, AreaSeries } from 'lightweight-charts';
+import { fetchBacktestEquity, type EquityPoint } from '../api/client';
+import { DesktopOnly } from '../utils/responsive';
 import styles from './Backtest.module.css';
+
 
 const API = 'http://localhost:8000';
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -30,12 +33,23 @@ export default function Backtest() {
   const [running, setRunning] = useState(false);
   const [history, setHistory] = useState<BacktestRun[]>([]);
   const [result, setResult] = useState<BacktestRun | null>(null);
+  const [equityData, setEquityData] = useState<EquityPoint[]>([]);
 
   useEffect(() => {
     apiFetch<BacktestRun[]>('/api/v1/backtest/history')
       .then(setHistory)
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (result?.run_id) {
+      fetchBacktestEquity(result.run_id)
+        .then(setEquityData)
+        .catch(() => setEquityData([]));
+    } else {
+      setEquityData([]);
+    }
+  }, [result?.run_id]);
 
   const updateWeight = (key: keyof typeof weights, val: number) => {
     setWeights((w) => ({ ...w, [key]: val }));
@@ -147,70 +161,32 @@ export default function Backtest() {
             </div>
           ) : (
             <>
-              {/* Equity curve placeholder */}
+              {/* Equity curve chart */}
               <div className={styles.chartCard}>
-                <h3 id="equity-label">累積淨值 <span className={styles.legend}>○ 策略 ○ 0050</span></h3>
-                <svg width="100%" height="200" viewBox="0 0 600 200" preserveAspectRatio="none" style={{ display: 'block' }}
-                  role="img" aria-labelledby="equity-label" aria-label="策略累積報酬曲線，年化報酬18.4%，最大回撤28.3%">
-                  <rect width="600" height="200" fill="var(--bg-elevated)" rx="4" />
-                  <line x1="0" y1="150" x2="600" y2="150" stroke="var(--bg-border)" strokeWidth="1" strokeDasharray="4 2" />
-                  <path d="M0,180 Q100,170 200,140 Q300,110 400,90 Q500,70 600,50" fill="none" stroke="var(--color-bull)" strokeWidth="2" />
-                  <path d="M0,175 Q100,165 200,155 Q300,145 400,135 Q500,125 600,115" fill="none" stroke="var(--text-muted)" strokeWidth="1" strokeDasharray="4 2" />
-                </svg>
+                <h3 id="equity-label">累積淨值 <span className={styles.legend}><span style={{color:'var(--color-bull)'}}>● 策略</span> <span style={{color:'var(--text-muted)'}}>○ 0050</span></span></h3>
+                <div style={{ position: 'relative' }}>
+                  <BacktestChart data={equityData} height={250} />
+                </div>
               </div>
 
-              {/* Drawdown placeholder */}
+              {/* Drawdown chart */}
               <div className={styles.chartCard}>
                 <h3 id="dd-label">回撤 Drawdown</h3>
-                <svg width="100%" height="80" viewBox="0 0 600 80" preserveAspectRatio="none" style={{ display: 'block' }}
-                  role="img" aria-labelledby="dd-label" aria-label="回撤曲線，最大回撤28.3%">
-                  <rect width="600" height="80" fill="var(--bg-elevated)" rx="4" />
-                  <path d="M0,20 Q100,25 200,30 Q300,60 400,50 Q500,55 600,15" fill="var(--color-bear-dim)" stroke="none" />
-                  <line x1="250" y1="0" x2="250" y2="80" stroke="var(--color-bear)" strokeWidth="1" strokeDasharray="2 2" />
-                  <text x="255" y="12" fill="var(--color-bear-text)" fontSize="10" fontFamily="var(--font-data)">max -28.3%</text>
-                </svg>
+                <DrawdownChart data={equityData} height={80} />
               </div>
 
               {/* Metric grid */}
               <div className={styles.metricGrid}>
                 {[
-                  { label: '年化報酬率', value: result.cagr, fmt: 'pct', benchmark: true },
-                  { label: '0050 年化報酬', value: result.cagr != null ? result.cagr * 0.6 : null, fmt: 'pct' },
-                  { label: 'Sharpe Ratio', value: result.sharpe, fmt: 'dec' },
-                  { label: '最大回撤', value: result.max_drawdown, fmt: 'pct', bear: true },
-                  { label: 'Calmar Ratio', value: result.cagr != null && result.max_drawdown ? result.cagr / Math.abs(result.max_drawdown) : null, fmt: 'dec' },
-                  { label: '超額報酬', value: result.cagr != null ? result.cagr * 0.4 : null, fmt: 'pct', bull: true },
-                  { label: '年化換手率', value: 3.12, fmt: 'pct' },
-                  { label: '勝率', value: 0.582, fmt: 'pct' },
+                  { label: '年化報酬率', value: result.cagr, fmt: 'pct' as const, bull: (result.cagr ?? 0) > 0 },
+                  { label: 'Sharpe Ratio', value: result.sharpe, fmt: 'dec' as const },
+                  { label: '最大回撤', value: result.max_drawdown, fmt: 'pct' as const, bear: true },
+                  { label: 'Calmar Ratio', value: (result.cagr != null && result.max_drawdown) ? result.cagr / Math.abs(result.max_drawdown) : null, fmt: 'dec' as const },
+                  { label: '總報酬率', value: result.total_return, fmt: 'pct' as const, bull: (result.total_return ?? 0) > 0 },
+                  { label: '年化換手率', value: 3.12, fmt: 'pct' as const },
                 ].map((m) => (
                   <MetricCell key={m.label} {...m} />
                 ))}
-              </div>
-
-              {/* Annual returns */}
-              <div className={styles.chartCard}>
-                <h3 id="annual-label">年度報酬</h3>
-                <div className={styles.annualBars} role="img" aria-labelledby="annual-label" aria-label="2022至2025年各年度報酬率">
-                  {['2022', '2023', '2024', '2025'].map((yr) => {
-                    const v = (Math.random() - 0.3) * 0.4;
-                    const isPos = v >= 0;
-                    return (
-                      <div key={yr} className={styles.annualBarCol}>
-                        <span className="font-data" style={{ fontSize: 'var(--font-size-xs)', color: isPos ? 'var(--color-bull-text)' : 'var(--color-bear-text)' }}>
-                          {(v * 100).toFixed(1)}%
-                        </span>
-                        <div className={styles.annualBarBg}>
-                          <div className={styles.annualBar} style={{
-                            height: `${Math.abs(v) * 300}%`,
-                            background: isPos ? 'var(--color-bull)' : 'var(--color-bear)',
-                            alignSelf: isPos ? 'flex-end' : 'flex-start',
-                          }} />
-                        </div>
-                        <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>{yr}</span>
-                      </div>
-                    );
-                  })}
-                </div>
               </div>
             </>
           )}
@@ -219,6 +195,82 @@ export default function Backtest() {
     </DesktopOnly>
     </div>
   );
+}
+
+function BacktestChart({ data, height }: { data: EquityPoint[]; height: number }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!containerRef.current || data.length === 0) return;
+
+    const chart = createChart(containerRef.current, {
+      width: containerRef.current.clientWidth,
+      height: height,
+      layout: {
+        background: { type: ColorType.Solid, color: 'transparent' },
+        textColor: '#94a3b8',
+      },
+      grid: {
+        vertLines: { color: '#1e293b' },
+        horzLines: { color: '#1e293b' },
+      },
+    });
+
+    const strategySeries = chart.addSeries(LineSeries, {
+      color: '#38bdf8',
+      lineWidth: 2,
+    });
+
+    const benchmarkSeries = chart.addSeries(LineSeries, {
+      color: '#64748b',
+      lineWidth: 1,
+    });
+
+    strategySeries.setData(data.map(p => ({ time: p.date, value: p.value })));
+    benchmarkSeries.setData(data.filter(p => p.benchmark !== null).map(p => ({ time: p.date, value: p.benchmark! })));
+
+    chart.timeScale().fitContent();
+
+    const handleResize = () => {
+      if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth });
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => { window.removeEventListener('resize', handleResize); chart.remove(); };
+  }, [data, height]);
+
+  return <div ref={containerRef} />;
+}
+
+function DrawdownChart({ data, height }: { data: EquityPoint[]; height: number }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!containerRef.current || data.length === 0) return;
+
+    const chart = createChart(containerRef.current, {
+      width: containerRef.current.clientWidth,
+      height: height,
+      layout: {
+        background: { type: ColorType.Solid, color: 'transparent' },
+        textColor: '#94a3b8',
+      },
+    });
+
+    const ddSeries = chart.addSeries(AreaSeries, {
+      lineColor: '#ef4444',
+      topColor: 'rgba(239, 68, 68, 0.4)',
+      bottomColor: 'rgba(239, 68, 68, 0.05)',
+      lineWidth: 1,
+    });
+
+    ddSeries.setData(data.filter(p => p.drawdown !== null).map(p => ({ time: p.date, value: p.drawdown! * 100 })));
+    chart.timeScale().fitContent();
+
+    return () => { chart.remove(); };
+  }, [data, height]);
+
+  return <div ref={containerRef} />;
 }
 
 function MetricCell({ label, value, fmt, bull, bear, benchmark }: {

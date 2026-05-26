@@ -14,6 +14,7 @@ const Backtest = lazy(() => import('./pages/Backtest'));
 const BacktestDetail = lazy(() => import('./pages/BacktestDetail'));
 const Strategy = lazy(() => import('./pages/Strategy'));
 const Monitor = lazy(() => import('./pages/Monitor'));
+const Settings = lazy(() => import('./pages/Settings'));
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },
@@ -38,6 +39,7 @@ export default function App() {
               <Route path="/backtest/:runId" element={<Suspense fallback={<PageFallback />}><ErrorBoundary><BacktestDetail /></ErrorBoundary></Suspense>} />
               <Route path="/strategy" element={<Suspense fallback={<PageFallback />}><ErrorBoundary><Strategy /></ErrorBoundary></Suspense>} />
               <Route path="/monitor" element={<Suspense fallback={<PageFallback />}><ErrorBoundary><Monitor /></ErrorBoundary></Suspense>} />
+              <Route path="/settings" element={<Suspense fallback={<PageFallback />}><ErrorBoundary><Settings /></ErrorBoundary></Suspense>} />
             </Route>
           </Routes>
         </BrowserRouter>

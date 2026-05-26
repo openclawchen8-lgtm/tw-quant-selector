@@ -66,3 +66,14 @@ export interface StockSearchResult {
 export function searchStocks(q: string): Promise<StockSearchResult[]> {
   return request<StockSearchResult[]>(`/api/v1/stocks/search?q=${encodeURIComponent(q)}`);
 }
+
+export interface EquityPoint {
+  date: string;
+  value: number;
+  benchmark: number | null;
+  drawdown: number | null;
+}
+
+export function fetchBacktestEquity(runId: string): Promise<EquityPoint[]> {
+  return request<EquityPoint[]>(`/api/v1/backtest/${runId}/equity`);
+}

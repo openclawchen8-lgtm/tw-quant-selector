@@ -113,6 +113,7 @@ def run_backtest(
 
     _save_backtest(db, run_id, metrics)
     _save_trades(db, all_trades)
+    _save_equity(db, run_id, portfolio_values, benchmark_returns)
 
     log.info("backtest.completed", run_id=run_id,
              total_return=metrics.get("total_return"), sharpe=metrics.get("sharpe"))
@@ -148,3 +149,33 @@ def _save_trades(db, trades: list[dict]):
                  t.get("shares"), t.get("price"), t.get("value"), None],
             )
         conn.commit()
+
+
+def _save_equity(db, run_id: str, portfolio_values: list[tuple[date, Decimal]], benchmark_prices: list[float]):
+    if not portfolio_values:
+        return
+    
+    # Normalize benchmark to match initial capital
+    initial_cap = float(portfolio_values[0][1])
+    normalized_benchmark = []
+    if benchmark_prices:
+        first_bm = benchmark_prices[0]
+        normalized_benchmark = [(p / first_bm) * initial_cap for p in benchmark_prices]
+    
+    # Calculate drawdown curve
+    peak = 0.0
+    with db.connection() as conn:
+        for i, (d, val) in enumerate(portfolio_values):
+            v = float(val)
+            if v > peak:
+                peak = v
+            dd = (v - peak) / peak if peak > 0 else 0
+            bm = normalized_benchmark[i] if i < len(normalized_benchmark) else None
+            
+            conn.execute(
+                """INSERT INTO backtest_equity (run_id, trade_date, portfolio_value, benchmark_value, drawdown)
+                   VALUES (?, ?, ?, ?, ?)""",
+                [run_id, d, v, bm, dd]
+            )
+        conn.commit()
+

@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import styles from './SkeletonLoader.module.css';
 
 interface Props {

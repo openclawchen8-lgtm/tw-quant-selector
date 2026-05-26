@@ -8,15 +8,15 @@ interface Props {
 
 export default function Tooltip({ content, children }: Props) {
   const [visible, setVisible] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const show = () => {
-    clearTimeout(timer.current);
+    if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => setVisible(true), 300);
   };
 
   const hide = () => {
-    clearTimeout(timer.current);
+    if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => setVisible(false), 150);
   };
 

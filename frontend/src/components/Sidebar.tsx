@@ -6,8 +6,9 @@ const navItems = [
   { path: '/signals', label: '選股訊號', icon: '≡' },
   { path: '/portfolio', label: '投組追蹤', icon: '◎' },
   { path: '/backtest', label: '回測分析', icon: '∿' },
-  { path: '/strategy', label: '策略設定', icon: '⚙' },
+  { path: '/strategy', label: '策略設定', icon: '♟' },
   { path: '/monitor', label: '資料監控', icon: '●' },
+  { path: '/settings', label: '系統設定', icon: '⚙' },
 ];
 
 interface SidebarProps {

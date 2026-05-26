@@ -32,11 +32,25 @@
 | **分級桶 ingestion** | 98 個分桶，分批輪詢避免超過 FinMind 免費限額（600 req/day） |
 | **4 大策略** | 動能、價值、品質、成長，每策略含多項子因子 |
 | **綜合評分** | Z-score 標準化 + 權重組合，輸出排名選股 |
-| **回測引擎** | 自訂期間/權重，支援交易成本、最大回撤、Sharpe、Calmar |
+| **回測引擎** | 自訂期間/權重，支援交易成本、最大回撤、Sharpe、Calmar、**互動淨值曲線** |
 | **投組再平衡** | 定期再平衡（月/季），支援部分換股與閾值觸發 |
-| **REST API** | FastAPI 提供完整 CRUD 與評分/回測端點 |
-| **前端儀表板** | React + TypeScript 全功能 UI，含即時訊號、互動圖表、策略控制 |
-| **匯出** | CSV / JSON 格式匯出選股訊號 |
+| **REST API** | FastAPI 提供完整 CRUD、評分/回測端點與**系統設定 API** |
+| **前端儀表板** | React + TypeScript 全功能 UI，含**金融終端鍵盤導航**、即時訊號、**系統設定頁面** |
+| **告警系統** | 支援 **Telegram Bot** 與 **Email (SMTP)** 損益監控與系統異常通知 |
+| **靈活配置** | 支援**環境變數優先級**設定與**動態資料庫路徑**熱切換 |
+| **匯出** | CSV / JSON 格式匯出選股訊號（支援欄位自定義） |
+
+---
+
+## 專案進度
+
+**✅ 所有開發任務已完成 (43/43)**
+
+| 狀態 | 數量 |
+|------|------|
+| ✅ 已完成 | 43 |
+| 📋 待處理 | 0 |
+| ⏭️ 已跳過 | 0 |
 
 ---
 
@@ -303,13 +317,19 @@ start_scheduler()  # 每 24 小時執行一次
 | GET | `/api/v1/backtest/history` | 回測歷史列表 |
 | GET | `/api/v1/backtest/{run_id}` | 回測摘要 |
 | GET | `/api/v1/backtest/{run_id}/detail` | 回測完整詳情 |
+| GET | `/api/v1/backtest/{run_id}/equity` | 取得淨值與回撤時間序列數據 |
 
-### 監控
+### 監控與設定
 
 | 方法 | 路徑 | 說明 |
 |------|------|------|
 | GET | `/api/v1/monitor/datasets` | 資料集覆蓋率與最後更新時間 |
 | GET | `/api/v1/monitor/logs` | 近 7 日操作日誌 |
+| GET | `/api/v1/settings/alerts` | 取得目前告警設定（含環境變數遮罩） |
+| POST | `/api/v1/settings/alerts` | 更新告警設定（不覆寫環境變數項） |
+| POST | `/api/v1/settings/test-alert` | 發送測試告警（Email + Telegram） |
+| GET | `/api/v1/settings/db-path` | 取得目前資料庫路徑 |
+| POST | `/api/v1/settings/db-path` | 動態變更資料庫路徑 |
 
 ---
 
@@ -556,11 +576,11 @@ tw-quant-selector/
 │   │   ├── styles/
 │   │   │   ├── variables.css       # 設計系統變數
 │   │   │   └── global.css          # 全域樣式
-│   │   ├── App.tsx                 # 路由入口
-│   │   └── main.tsx                # React 掛載點
-│   ├── package.json
-│   └── vite.config.ts
-├── tasks/                          # 任務追蹤檔案 (T001-T031)
+│   ├── App.tsx                 # 路由入口
+│   └── main.tsx                # React 掛載點
+├── package.json
+└── vite.config.ts
+├── tasks/                          # 任務追蹤檔案 (T001-T043)
 ├── scripts/
 │   └── run_demo.py                 # 一鍵 demo 腳本
 ├── tests/
@@ -574,6 +594,45 @@ tw-quant-selector/
 ├── Dockerfile
 └── README.md
 ```
+
+## 環境變數與配置優先級
+
+本系統配置遵循 **ENV (環境變數) > DB (資料庫)** 的優先級順序。若環境變數已設定，該項設定在系統中將被鎖定 (ENV LOCKED)，防止前端誤改或寫入資料庫，以確保安全性與一致性。
+
+### 關鍵環境變數清單
+
+| 類別 | 環境變數名稱 | 說明 |
+| :--- | :--- | :--- |
+| **資料庫** | `DUCKDB_PATH` | 資料庫存放的絕對路徑 |
+| **FinMind** | `FINMIND_TOKEN` | 數據擷取 API Token |
+| **Telegram** | `TELEGRAM_BOT_TOKEN` | Bot API 金鑰 (敏感) |
+| **Telegram** | `TELEGRAM_CHAT_ID` | 接收通知的 Chat ID |
+| **Email (SMTP)** | `SMTP_SERVER` | SMTP 伺服器位址 |
+| **Email (SMTP)** | `SMTP_PORT` | 連接埠 (預設 587) |
+| **Email (SMTP)** | `SMTP_USER` | SMTP 登入帳號 |
+| **Email (SMTP)** | `SMTP_PASSWORD` | SMTP 登入密碼 (敏感) |
+| **Email (SMTP)** | `EMAIL_SENDER` | 寄件者名稱或地址 |
+| **Email (SMTP)** | `EMAIL_RECIPIENT` | 接收告警的目標地址 |
+
+---
+
+## 資料庫管理
+
+本系統使用 DuckDB 作為核心資料庫。
+
+### 預設存儲位置
+- **路徑**：`data/tw_quant.duckdb` (位於專案根目錄)
+
+### 設定優先級
+系統連線時會依照以下順序決定資料庫檔案位置：
+1. **環境變數 (`DUCKDB_PATH`)**：若 `.env` 中設定了絕對路徑，優先使用。
+2. **預設路徑**：若無環境變數，預設指向 `data/tw_quant.duckdb`。
+
+### 動態變更 (熱切換)
+透過前端 **「系統設定 (Settings) -> 資料庫管理」** 頁面，可即時修改資料庫存儲路徑。
+- **安全性**：後端已實作嚴格的路徑驗證 (Path Traversal 保護)，禁止存取 `/etc`、`/root` 等敏感目錄。
+- **重新連線**：變更路徑後，後端會自動關閉舊連線並初始化新位置的資料表結構。
+- **持久化**：變更的路徑會記錄於資料庫 `alert_settings` 表格中，確保系統重啟後能自動載入。
 
 ---
 
