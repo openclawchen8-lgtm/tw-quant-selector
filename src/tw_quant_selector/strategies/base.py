@@ -1,3 +1,4 @@
+import inspect
 from abc import ABC, abstractmethod
 from datetime import date
 from typing import Any, Protocol
@@ -52,11 +53,42 @@ def register_strategy(cls: type[BaseStrategy]):
     return cls
 
 
-def get_strategy(name: str) -> BaseStrategy:
+def get_strategy(name: str, params: dict[str, Any] | None = None) -> BaseStrategy:
     if name not in _strategy_registry:
         raise KeyError(f"Unknown strategy: {name}. Available: {list(_strategy_registry.keys())}")
-    return _strategy_registry[name]()
+    cls = _strategy_registry[name]
+    if params:
+        return cls(**params)
+    return cls()
 
 
 def list_strategies() -> list[str]:
     return list(_strategy_registry.keys())
+
+
+_strategy_schemas: dict[str, dict[str, Any]] | None = None
+
+
+def get_strategy_schemas() -> dict[str, dict[str, Any]]:
+    global _strategy_schemas
+    if _strategy_schemas is not None:
+        return _strategy_schemas
+    schemas: dict[str, dict[str, Any]] = {}
+    for name, cls in _strategy_registry.items():
+        sig = inspect.signature(cls.__init__)
+        params: dict[str, Any] = {}
+        annotations = getattr(cls.__init__, "__annotations__", {})
+        for pname, param in sig.parameters.items():
+            if pname == "self":
+                continue
+            default = param.default
+            if default is inspect.Parameter.empty:
+                continue
+            ann = annotations.get(pname, str)
+            params[pname] = {
+                "default": default,
+                "type": ann.__name__ if hasattr(ann, "__name__") else str(ann),
+            }
+        schemas[name] = params
+    _strategy_schemas = schemas
+    return schemas

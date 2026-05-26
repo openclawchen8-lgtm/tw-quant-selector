@@ -102,12 +102,22 @@ CREATE TABLE IF NOT EXISTS backtest_positions (
     weight          DECIMAL(8,4),
     PRIMARY KEY (run_id, trade_date, stock_id)
 );
+
+CREATE TABLE IF NOT EXISTS ingestion_tracker (
+    stock_id        VARCHAR NOT NULL,
+    dataset         VARCHAR NOT NULL,
+    bucket          INTEGER,
+    last_updated    DATE,
+    last_status     VARCHAR,
+    error_msg       VARCHAR,
+    PRIMARY KEY (stock_id, dataset)
+);
 """
 
 
 class Database:
     def __init__(self, db_path: str | None = None):
-        self.db_path = db_path or os.getenv("DUCKDB_PATH", "/data/tw_quant.duckdb")
+        self.db_path = db_path or os.getenv("DUCKDB_PATH", str(Path.cwd() / "data" / "tw_quant.duckdb"))
         self._conn: duckdb.DuckDBPyConnection | None = None
 
     def connect(self) -> duckdb.DuckDBPyConnection:

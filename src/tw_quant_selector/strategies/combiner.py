@@ -22,14 +22,15 @@ DEFAULT_WEIGHTS: dict[str, float] = {
 def compute_composite_scores(
     db, as_of_date: date, weights: dict[str, float] | None = None,
     top_n_stocks: int = 20, top_n_etfs: int = 3,
+    strategy_params: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     weights = weights or DEFAULT_WEIGHTS
     universe = get_universe(db, as_of_date)
     stock_ids = [s["stock_id"] for s in universe["stocks"]]
     etf_ids = [s["stock_id"] for s in universe["etfs"]]
 
-    stock_scores = _combine(db, stock_ids, as_of_date, weights)
-    etf_scores = _combine(db, etf_ids, as_of_date, weights)
+    stock_scores = _combine(db, stock_ids, as_of_date, weights, strategy_params)
+    etf_scores = _combine(db, etf_ids, as_of_date, weights, strategy_params)
 
     stock_ranked = _rank_and_select(stock_scores, top_n_stocks)
     etf_ranked = _rank_and_select(etf_scores, top_n_etfs)
@@ -44,7 +45,10 @@ def compute_composite_scores(
     }
 
 
-def _combine(db, stock_ids: list[str], as_of_date: date, weights: dict[str, float]) -> dict[str, float]:
+def _combine(
+    db, stock_ids: list[str], as_of_date: date, weights: dict[str, float],
+    strategy_params: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, float]:
     combined: dict[str, list[float]] = {}
     dp = None
     from tw_quant_selector.strategies.base import DuckDBDataProvider
@@ -53,7 +57,8 @@ def _combine(db, stock_ids: list[str], as_of_date: date, weights: dict[str, floa
     for name in list_strategies():
         if name not in weights or weights[name] == 0:
             continue
-        strat = get_strategy(name)
+        params = (strategy_params or {}).get(name)
+        strat = get_strategy(name, params)
         scores = strat.compute_score(stock_ids, as_of_date, dp if name == "momentum" else db)
         weight = weights[name]
         for sid, score in scores.items():

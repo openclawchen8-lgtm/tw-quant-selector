@@ -46,8 +46,9 @@ class FinMindClient:
                 log.warning("finmind.api_error", dataset=dataset, msg=data.get("msg"))
                 return []
             except httpx.HTTPStatusError as e:
-                if e.response.status_code == 402:
-                    log.warning("finmind.quota_exhausted", dataset=dataset)
+                status = e.response.status_code
+                if status in (400, 402, 404):
+                    log.warning("finmind.skipped", dataset=dataset, status=status, detail=e.response.text[:200])
                     return []
                 if attempt == 0:
                     wait = 2 ** attempt

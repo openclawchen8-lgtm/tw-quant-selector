@@ -1,10 +1,12 @@
 from datetime import date, datetime
-from typing import Optional
+from typing import Any, Optional
 import uuid
 from fastapi import FastAPI, Query, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from tw_quant_selector.data.database import Database
+from tw_quant_selector.strategies.base import get_strategy_schemas, list_strategies
 from tw_quant_selector.strategies.combiner import compute_composite_scores, DEFAULT_WEIGHTS
 from tw_quant_selector.backtest.engine import run_backtest
 
@@ -61,6 +63,99 @@ def health():
     return HealthResponse(status="ok", db_connected=db_ok, last_update=last)
 
 
+@app.get("/", response_class=HTMLResponse)
+def dashboard():
+    return HTMLResponse(_DASHBOARD_HTML)
+
+
+@app.get("/api/v1/dashboard")
+def dashboard_data():
+    from datetime import date
+    stats = {}
+    for t in ["stocks", "daily_prices", "valuations", "monthly_revenue", "financials", "signals", "backtest_runs"]:
+        n = db.execute(f"SELECT COUNT(*) FROM {t}").fetchone()
+        stats[t] = n[0] if n else 0
+    price_range = db.execute("SELECT MIN(trade_date), MAX(trade_date) FROM daily_prices").fetchone()
+    val_range = db.execute("SELECT MIN(trade_date), MAX(trade_date) FROM valuations").fetchone()
+    tracker = db.execute(
+        "SELECT dataset, last_status, COUNT(*) FROM ingestion_tracker WHERE last_updated IS NOT NULL GROUP BY dataset, last_status"
+    ).fetchall()
+    top_volume = db.execute(
+        """SELECT stock_id, COUNT(*) as days FROM daily_prices
+           GROUP BY stock_id ORDER BY days DESC LIMIT 10"""
+    ).fetchall()
+    return {
+        "table_counts": stats,
+        "price_date_range": {"min": str(price_range[0]) if price_range and price_range[0] else None,
+                             "max": str(price_range[1]) if price_range and price_range[1] else None},
+        "val_date_range": {"min": str(val_range[0]) if val_range and val_range[0] else None,
+                           "max": str(val_range[1]) if val_range and val_range[1] else None},
+        "tracker": [{"dataset": r[0], "status": r[1], "count": r[2]} for r in tracker],
+        "top_stocks": [{"stock_id": r[0], "days": r[1]} for r in top_volume],
+    }
+
+
+@app.get("/api/v1/stocks/by_dataset/{dataset}")
+def stocks_by_dataset(dataset: str):
+    mapping = {
+        "daily_prices": "daily_prices",
+        "valuations": "valuations",
+        "monthly_revenue": "monthly_revenue",
+        "financials": "financials",
+    }
+    tbl = mapping.get(dataset)
+    if not tbl:
+        raise HTTPException(400, f"Unknown dataset: {dataset}")
+    rows = db.execute(
+        f"SELECT s.stock_id, s.stock_name, s.market, COUNT(*) as cnt FROM {tbl} t JOIN stocks s ON s.stock_id = t.stock_id GROUP BY s.stock_id, s.stock_name, s.market ORDER BY cnt DESC LIMIT 100"
+    ).fetchall()
+    return [{"stock_id": r[0], "name": r[1], "market": r[2], "count": r[3]} for r in rows]
+
+
+@app.get("/api/v1/stocks/search")
+def search_stocks(q: str = Query("", min_length=1)):
+    like = f"%{q}%"
+    rows = db.execute(
+        "SELECT stock_id, stock_name, market, is_etf, industry FROM stocks WHERE stock_id LIKE ? OR stock_name LIKE ? LIMIT 20",
+        [like, like]
+    ).fetchall()
+    return [{"stock_id": r[0], "name": r[1], "market": r[2], "is_etf": bool(r[3]), "industry": r[4]} for r in rows]
+
+
+@app.get("/api/v1/stock/{stock_id}")
+def stock_detail(stock_id: str):
+    info = db.execute("SELECT stock_id, stock_name, market, is_etf, industry FROM stocks WHERE stock_id = ?", [stock_id]).fetchone()
+    if not info:
+        raise HTTPException(404, "Stock not found")
+    prices = db.execute(
+        "SELECT trade_date, open, high, low, close, volume FROM daily_prices WHERE stock_id = ? ORDER BY trade_date DESC LIMIT 120",
+        [stock_id]
+    ).fetchall()
+    vals = db.execute(
+        "SELECT trade_date, pe_ratio, pb_ratio, dividend_yield FROM valuations WHERE stock_id = ? ORDER BY trade_date DESC LIMIT 10",
+        [stock_id]
+    ).fetchall()
+    fins = db.execute(
+        "SELECT year_quarter, revenue, eps, roe, gross_margin, debt_to_equity FROM financials WHERE stock_id = ? ORDER BY year_quarter DESC LIMIT 8",
+        [stock_id]
+    ).fetchall()
+    revs = db.execute(
+        "SELECT year_month, revenue, revenue_yoy FROM monthly_revenue WHERE stock_id = ? ORDER BY year_month DESC LIMIT 12",
+        [stock_id]
+    ).fetchall()
+    return {
+        "info": {"stock_id": info[0], "name": info[1], "market": info[2], "is_etf": info[3], "industry": info[4]},
+        "prices": [{"d": str(r[0]), "o": float(r[1]) if r[1] else None, "h": float(r[2]) if r[2] else None,
+                    "l": float(r[3]) if r[3] else None, "c": float(r[4]) if r[4] else None, "v": r[5]} for r in prices],
+        "valuations": [{"d": str(r[0]), "pe": float(r[1]) if r[1] else None, "pb": float(r[2]) if r[2] else None,
+                        "dy": float(r[3]) if r[3] else None} for r in vals],
+        "financials": [{"yq": r[0], "rev": r[1], "eps": float(r[2]) if r[2] else None,
+                        "roe": float(r[3]) if r[3] else None, "gm": float(r[4]) if r[4] else None,
+                        "de": float(r[5]) if r[5] else None} for r in fins],
+        "revenue": [{"ym": r[0], "rev": r[1], "yoy": float(r[2]) if r[2] else None} for r in revs],
+    }
+
+
 @app.get("/api/v1/signals/latest", response_model=SignalResponse)
 def latest_signals(
     strategy: str = Query("composite"),
@@ -115,6 +210,22 @@ def start_backtest(req: BacktestRequest):
     return BacktestResponse(run_id=run_id, status="completed")
 
 
+@app.get("/api/v1/backtest/history")
+def backtest_history():
+    rows = db.execute(
+        """SELECT run_id, run_at, start_date, end_date, total_return, cagr, sharpe, max_drawdown
+           FROM backtest_runs ORDER BY run_at DESC LIMIT 20"""
+    ).fetchall()
+    return [{
+        "run_id": r[0], "created_at": str(r[1]) if r[1] else None,
+        "start_date": str(r[2]) if r[2] else None, "end_date": str(r[3]) if r[3] else None,
+        "total_return": float(r[4]) if r[4] else None,
+        "cagr": float(r[5]) if r[5] else None,
+        "sharpe": float(r[6]) if r[6] else None,
+        "max_drawdown": float(r[7]) if r[7] else None,
+    } for r in rows]
+
+
 @app.get("/api/v1/backtest/{run_id}")
 def get_backtest(run_id: str):
     row = db.execute(
@@ -141,3 +252,459 @@ def data_status():
         "missing_dates": [],
         "coverage": {},
     }
+
+
+@app.get("/api/v1/strategies/config")
+def strategy_config():
+    schemas = get_strategy_schemas()
+    return {
+        "strategies": {
+            name: {
+                "params": {k: v["default"] for k, v in p.items()},
+                "param_types": {k: v["type"] for k, v in p.items()},
+            }
+            for name, p in schemas.items()
+        },
+        "default_weights": DEFAULT_WEIGHTS,
+        "universe_defaults": {
+            "include_etf": False,
+            "min_market_cap": 3_000_000_000,
+            "exclude_financial": True,
+            "top_n_stocks": 20,
+            "top_n_etfs": 3,
+        },
+    }
+
+
+class StrategyRunRequest(BaseModel):
+    weights: Optional[dict[str, float]] = None
+    strategy_params: Optional[dict[str, dict[str, Any]]] = None
+    as_of_date: Optional[str] = None
+    top_n_stocks: int = 20
+    top_n_etfs: int = 3
+
+
+@app.post("/api/v1/strategies/run")
+def run_strategies(req: StrategyRunRequest):
+    from datetime import date as d_date
+    as_of = d_date.fromisoformat(req.as_of_date) if req.as_of_date else d_date.today()
+    result = compute_composite_scores(
+        db, as_of,
+        weights=req.weights,
+        strategy_params=req.strategy_params,
+        top_n_stocks=req.top_n_stocks,
+        top_n_etfs=req.top_n_etfs,
+    )
+    return result
+
+
+_DASHBOARD_HTML = """<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tw-quant-selector</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f172a;color:#e2e8f0;padding:24px}
+h1{font-size:1.4rem;color:#38bdf8;cursor:pointer;display:inline-block}
+h2{font-size:1.1rem;margin:20px 0 10px;color:#94a3b8}
+.sub{color:#64748b;font-size:.85rem;margin-bottom:20px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;margin-bottom:20px}
+.card{background:#1e293b;border-radius:10px;padding:16px;border:1px solid #334155}
+.card .label{font-size:.8rem;color:#64748b}
+.card .value{font-size:1.5rem;font-weight:700;margin-top:4px}
+.value.green{color:#22c55e}.value.yellow{color:#eab308}.value.blue{color:#38bdf8}
+.tabs{display:flex;gap:4px;margin:16px 0;border-bottom:2px solid #1e293b}
+.tab{padding:8px 18px;cursor:pointer;border-radius:8px 8px 0 0;color:#64748b;font-size:.9rem;font-weight:600;transition:.15s}
+.tab:hover{color:#e2e8f0;background:#1e293b}
+.tab.active{color:#38bdf8;background:#1e293b;border-bottom:2px solid #38bdf8;margin-bottom:-2px}
+.tab-pane{display:none}
+.tab-pane.active{display:block}
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+th{text-align:left;padding:8px 10px;border-bottom:2px solid #334155;color:#94a3b8;font-weight:600}
+td{padding:6px 10px;border-bottom:1px solid #1e293b}
+tr{cursor:pointer}tr:hover td{background:#1e293b}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.75rem;font-weight:600}
+.badge.ok{background:#166534;color:#86efac}
+.badge.failed{background:#7f1d1d;color:#fca5a5}
+.badge.skipped{background:#713f12;color:#fde047}
+.badge.running{background:#1e3a5f;color:#93c5fd}
+.clickable{color:#38bdf8;text-decoration:underline;cursor:pointer}
+.loading{color:#64748b;font-style:italic}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100}
+.modal{display:none;position:fixed;top:5%;left:5%;right:5%;bottom:5%;background:#0f172a;border:1px solid #334155;border-radius:12px;z-index:101;overflow:auto;padding:24px}
+.modal-close{float:right;background:none;border:none;color:#94a3b8;font-size:1.5rem;cursor:pointer}
+.modal-close:hover{color:#fff}
+canvas{width:100%;height:280px;background:#1e293b;border-radius:8px;margin:12px 0}
+input.search,select.search{width:100%;padding:10px 14px;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:1rem;margin-bottom:16px;outline:none}
+input.search:focus,select.search:focus{border-color:#38bdf8}
+input[type=number]{width:100%;padding:8px 10px;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:.85rem;outline:none}
+input[type=number]:focus{border-color:#38bdf8}
+label{font-size:.8rem;color:#94a3b8;display:block;margin-bottom:2px}
+.ctrl-row{align-items:center;display:flex;gap:16px;margin-bottom:12px}
+.ctrl-row label{flex:0 0 120px;margin:0}
+.ctrl-row input,.ctrl-row select{flex:1}
+.ctrl-row .val-label{min-width:50px;text-align:right;color:#e2e8f0;font-weight:600;font-size:.85rem}
+.btn{padding:10px 24px;border:none;border-radius:8px;font-size:.95rem;font-weight:600;cursor:pointer;transition:.15s;display:inline-flex;align-items:center;gap:6px}
+.btn-primary{background:#0b6bcb;color:#fff}
+.btn-primary:hover{background:#0954a0}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.btn-success{background:#166534;color:#fff}
+.btn-success:hover{background:#14532d}
+.btn-warning{background:#92400e;color:#fff}
+.btn-warning:hover{background:#78350f}
+.section{border:1px solid #334155;border-radius:10px;padding:16px;margin-bottom:16px}
+.section h3{font-size:.95rem;color:#e2e8f0;margin-bottom:10px}
+input[type=range]{width:100%;-webkit-appearance:none;background:#1e293b;height:6px;border-radius:3px;outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:#38bdf8;cursor:pointer}
+.param-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.result-table{max-height:500px;overflow-y:auto}
+@media(max-width:640px){.grid{grid-template-columns:repeat(2,1fr)}body{padding:12px}.modal{top:2%;left:2%;right:2%;bottom:2%;padding:16px}.ctrl-row{flex-wrap:wrap;gap:6px}.ctrl-row label{flex:0 0 80px}}
+</style>
+</head>
+<body>
+<div class="modal-overlay" id="modal-overlay" onclick="closeModal()"></div>
+<div class="modal" id="modal"><button class="modal-close" onclick="closeModal()">&times;</button><div id="modal-body">載入中...</div></div>
+
+<h1 onclick="location.href='/'">tw-quant-selector</h1>
+<p class="sub" id="sub">載入中...</p>
+
+<div class="tabs">
+  <div class="tab active" data-tab="dash" onclick="switchTab('dash')">📊 儀表板(Dashboard)</div>
+  <div class="tab" data-tab="strategy" onclick="switchTab('strategy')">⚙️ 策略(Strategy)</div>
+  <div class="tab" data-tab="backtest" onclick="switchTab('backtest')">📈 回測(Backtest)</div>
+</div>
+
+<!-- ══════ TAB 1: DASHBOARD ══════ -->
+<div class="tab-pane active" id="tab-dash">
+  <div class="grid" id="stats-grid"></div>
+  <h2>🔍 查詢股票(Search)</h2>
+  <input class="search" placeholder="輸入股號或名稱 (2330、台積電…)" oninput="searchStock(this.value)">
+  <table><thead><tr><th>股號(ID)</th><th>名稱(Name)</th><th>市場(Market)</th><th>類型(Type)</th></tr></thead><tbody id="search-body"></tbody></table>
+  <h2>📋 資料擷取(Ingestion Tracker)</h2>
+  <table><thead><tr><th>資料集(Dataset)</th><th>狀態(Status)</th><th>筆數(Count)</th></tr></thead><tbody id="tracker-body"></tbody></table>
+  <h2>🏆 最多資料的股票(Top Stocks)</h2>
+  <table><thead><tr><th>股號(ID)</th><th>交易日數(Days)</th></tr></thead><tbody id="top-body"></tbody></table>
+  <h2>📈 最新訊號(Latest Signals)</h2>
+  <table><thead><tr><th>股號(ID)</th><th>名稱(Name)</th><th>分數(Score)</th><th>排名(Rank)</th></tr></thead><tbody id="signal-body"></tbody></table>
+</div>
+
+<!-- ══════ TAB 2: STRATEGY CONTROL ══════ -->
+<div class="tab-pane" id="tab-strategy">
+  <div class="section" id="strategy-weights-section"><h3>🏋️ 策略權重(Weights)</h3></div>
+  <div class="section" id="strategy-params-section"><h3>🔧 策略參數(Parameters)</h3></div>
+  <div class="section">
+    <h3>📋 篩選條件(Universe Filters)</h3>
+    <div class="ctrl-row"><label>納入ETF(Include ETF)</label>
+      <select id="uf-include-etf"><option value="false">否(No)</option><option value="true">是(Yes)</option></select>
+    </div>
+    <div class="ctrl-row"><label>最低市值(Min Market Cap)(億)</label>
+      <input type="number" id="uf-min-cap" value="30">
+    </div>
+    <div class="ctrl-row"><label>前N檔股票(Top N Stocks)</label>
+      <input type="number" id="uf-top-stocks" value="20" min="1" max="100">
+    </div>
+    <div class="ctrl-row"><label>前N檔ETF(Top N ETFs)</label>
+      <input type="number" id="uf-top-etfs" value="3" min="0" max="20">
+    </div>
+    <div class="ctrl-row"><label>評分日期(Score Date)</label>
+      <input type="date" id="uf-as-of">
+    </div>
+    <div style="margin-top:16px">
+      <button class="btn btn-primary" id="btn-run-strategy" onclick="runStrategy()">▶ 執行評分(Run)</button>
+      <span id="run-status" style="margin-left:12px;color:#64748b;font-size:.85rem"></span>
+    </div>
+  </div>
+  <div class="section" id="result-section" style="display:none">
+    <h3>✅ 評分結果(Results)</h3>
+    <div class="result-table" id="result-body"></div>
+  </div>
+</div>
+
+<!-- ══════ TAB 3: BACKTEST ══════ -->
+<div class="tab-pane" id="tab-backtest">
+  <div class="section">
+    <h3>📈 回測設定(Backtest Settings)</h3>
+    <div class="ctrl-row"><label>開始日期(Start)</label><input type="date" id="bt-start"></div>
+    <div class="ctrl-row"><label>結束日期(End)</label><input type="date" id="bt-end"></div>
+    <div style="margin-top:16px">
+      <button class="btn btn-warning" onclick="runBacktest()">▶ 執行回測(Run Backtest)</button>
+      <span id="bt-status" style="margin-left:12px;color:#64748b;font-size:.85rem"></span>
+    </div>
+  </div>
+  <div class="section" id="bt-result-section" style="display:none">
+    <h3>📊 回測結果(Results)</h3>
+    <div id="bt-result-body"></div>
+  </div>
+  <div class="section">
+    <h3>📜 歷史回測(History)</h3>
+    <table><thead><tr><th>回測ID(Run ID)</th><th>區間(Period)</th><th>報酬率(Return)</th><th>CAGR</th><th>Sharpe</th><th>最大回撤(Max DD)</th></tr></thead><tbody id="bt-history-body"></tbody></table>
+  </div>
+</div>
+
+<script>
+let config = {};
+let latestResult = null;
+
+// ── Tab switching ──
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === 'tab-'+name));
+}
+
+// ── Modal ──
+function openModal(html) {
+  document.getElementById('modal-overlay').style.display = 'block';
+  document.getElementById('modal').style.display = 'block';
+  document.getElementById('modal-body').innerHTML = html;
+}
+function closeModal() {
+  document.getElementById('modal-overlay').style.display = 'none';
+  document.getElementById('modal').style.display = 'none';
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+// ── Stock search ──
+let searchTimer = null;
+async function searchStock(q) {
+  clearTimeout(searchTimer);
+  const tb = document.getElementById('search-body');
+  if (!q || q.length < 1) { tb.innerHTML = ''; return; }
+  searchTimer = setTimeout(async () => {
+    const rows = await fetch('/api/v1/stocks/search?q='+encodeURIComponent(q)).then(r=>r.json());
+    tb.innerHTML = rows.map(r =>
+      `<tr onclick="openStock('${r.stock_id}')"><td class="clickable">${r.stock_id}</td><td>${r.name}</td><td>${r.market}</td><td>${r.is_etf?'ETF':'個股(Stock)'}</td></tr>`
+    ).join('');
+  }, 200);
+}
+
+async function openStock(sid) {
+  openModal('<p class="loading">載入中...</p>');
+  try {
+    const d = await fetch('/api/v1/stock/'+sid).then(r=>r.json());
+    const i = d.info;
+    let html = `<h2>${i.name} (${i.stock_id}) <span class="badge ${i.is_etf?'ok':'skipped'}">${i.is_etf?'ETF':'個股(Stock)'}</span> ${i.market} ${i.industry||''}</h2>`;
+    if (d.prices.length) html += `<canvas id="pc"></canvas>`;
+    html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">`;
+    if (d.valuations.length) {
+      html += `<div style="grid-column:1/-1"><h3>📊 本益比/淨值比(PE/PB)</h3><table><thead><tr><th>日期(Date)</th><th>PE</th><th>PB</th><th>殖利率(Dividend Yield)</th></tr></thead><tbody>`;
+      for (const v of d.valuations) html += `<tr><td>${v.d}</td><td>${v.pe??'-'}</td><td>${v.pb??'-'}</td><td>${v.dy!=null?(v.dy*100).toFixed(2)+'%':'-'}</td></tr>`;
+      html += `</tbody></table></div>`;
+    }
+    if (d.financials.length) {
+      html += `<div style="grid-column:1/-1"><h3>💰 財報(Financials)</h3><table><thead><tr><th>季度(Quarter)</th><th>營收(Revenue)</th><th>EPS</th><th>ROE</th><th>毛利率(Gross Margin)</th><th>負債比(D/E)</th></tr></thead><tbody>`;
+      for (const f of d.financials) html += `<tr><td>${f.yq}</td><td>${f.rev!=null?Number(f.rev).toLocaleString():'-'}</td><td>${f.eps??'-'}</td><td>${f.roe!=null?(f.roe*100).toFixed(2)+'%':'-'}</td><td>${f.gm!=null?(f.gm*100).toFixed(2)+'%':'-'}</td><td>${f.de!=null?f.de.toFixed(2):'-'}</td></tr>`;
+      html += `</tbody></table></div>`;
+    }
+    if (d.revenue.length) {
+      html += `<div style="grid-column:1/-1"><h3>📅 月營收(Monthly Revenue)</h3><table><thead><tr><th>月份(Month)</th><th>營收(Revenue)</th><th>年增率(YoY)</th></tr></thead><tbody>`;
+      for (const r of d.revenue) html += `<tr><td>${r.ym}</td><td>${r.rev!=null?Number(r.rev).toLocaleString():'-'}</td><td>${r.yoy!=null?(r.yoy*100).toFixed(2)+'%':'-'}</td></tr>`;
+      html += `</tbody></table></div>`;
+    }
+    html += `</div>`;
+    document.getElementById('modal-body').innerHTML = html;
+    if (d.prices.length) setTimeout(() => drawChart(d.prices.reverse()), 50);
+  } catch(e) { document.getElementById('modal-body').innerHTML = '<p>❌ 查無此股票</p>'; }
+}
+
+function drawChart(prices) {
+  const c = document.getElementById('pc'); if (!c) return;
+  const ctx = c.getContext('2d');
+  const dpr = window.devicePixelRatio||1;
+  const rect = c.getBoundingClientRect();
+  c.width = rect.width*dpr; c.height = rect.height*dpr;
+  ctx.scale(dpr,dpr);
+  const w=rect.width, h=rect.height, pad={t:20,r:16,b:30,l:50}, cw=w-pad.l-pad.r, ch=h-pad.t-pad.b;
+  const cls = prices.map(p=>p.c).filter(x=>x!=null);
+  if (!cls.length) return;
+  const mn=Math.min(...cls), mx=Math.max(...cls), range=mx-mn||1;
+  ctx.clearRect(0,0,w,h); ctx.strokeStyle='#38bdf8'; ctx.lineWidth=2; ctx.beginPath();
+  prices.forEach((p,i)=>{const x=pad.l+(i/(prices.length-1||1))*cw, y=pad.t+(1-(p.c-mn)/range)*ch; i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});
+  ctx.stroke();
+  ctx.fillStyle='#64748b'; ctx.font='11px -apple-system, sans-serif'; ctx.textAlign='center';
+  const step=Math.max(1,Math.floor(prices.length/8));
+  prices.forEach((p,i)=>{if(i%step===0||i===prices.length-1)ctx.fillText(p.d.slice(5),pad.l+(i/(prices.length-1||1))*cw,h-6);});
+  ctx.textAlign='right';
+  for(let v=Math.floor(mn/10)*10;v<=mx;v+=Math.max(1,Math.round(range/4))){const y=pad.t+(1-(v-mn)/range)*ch;ctx.fillText(v.toFixed(0),pad.l-4,y+4);ctx.strokeStyle='#1e293b';ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(w-pad.r,y);ctx.stroke();}
+}
+
+async function openDataset(ds) {
+  openModal('<p class="loading">載入中...</p>');
+  try {
+    const rows = await fetch('/api/v1/stocks/by_dataset/'+ds).then(r=>r.json());
+    const labels={daily_prices:'股價(Prices)',valuations:'本益比/淨值比(PE/PB)',monthly_revenue:'月營收(Revenue)',financials:'財報(Financials)'};
+    let html=`<h2>📁 ${labels[ds]||ds}</h2><p>共(Total) <strong>${rows.length}</strong> 檔(stocks)有資料</p><table><thead><tr><th>股號(ID)</th><th>名稱(Name)</th><th>市場(Market)</th><th>筆數(Count)</th></tr></thead><tbody>`;
+    for(const r of rows) html+=`<tr onclick="openStock('${r.stock_id}')"><td class="clickable">${r.stock_id}</td><td>${r.name}</td><td>${r.market}</td><td>${r.count}</td></tr>`;
+    html+=`</tbody></table>`;
+    document.getElementById('modal-body').innerHTML = html;
+  } catch(e) { document.getElementById('modal-body').innerHTML = '<p>❌ 查詢失敗</p>'; }
+}
+
+// ── Dashboard load ──
+async function loadDashboard() {
+  const d = await fetch('/api/v1/dashboard').then(r=>r.json());
+  const s = await fetch('/api/v1/signals/latest?include_etf=true').then(r=>r.json()).catch(()=>null);
+  document.getElementById('sub').textContent =
+    `  股價(Prices) ${d.price_date_range.min||'?'} ~ ${d.price_date_range.max||'?'} · 本益比(PE/PB) ${d.val_date_range.min||'?'} ~ ${d.val_date_range.max||'?'}`;
+  const labels={stocks:'股票(Stocks)',daily_prices:'股價(Prices)',valuations:'本益比(PE/PB)',monthly_revenue:'月營收(Revenue)',financials:'財報(Financials)',signals:'訊號(Signals)',backtest_runs:'回測(Backtests)'};
+  for(const[k,v]of Object.entries(d.table_counts)){
+    const color=k==='stocks'?'blue':k==='daily_prices'?'green':'yellow';
+    document.getElementById('stats-grid').innerHTML+=`<div class="card"><div class="label">${labels[k]||k}</div><div class="value ${color}">${v.toLocaleString()}</div></div>`;
+  }
+  const dsLabels={daily_prices:'股價(Prices)',valuations:'本益比/淨值比(PE/PB)',monthly_revenue:'月營收(Revenue)',financials:'財報(Financials)',signals:'訊號(Signals)'};
+  for(const r of d.tracker)
+    document.getElementById('tracker-body').innerHTML+=`<tr onclick="openDataset('${r.dataset}')"><td class="clickable">${dsLabels[r.dataset]||r.dataset}</td><td><span class="badge ${r.status}">${r.status=='ok'?'成功(OK)':r.status=='failed'?'失敗(Failed)':r.status=='skipped'?'略過(Skipped)':r.status}</span></td><td>${r.count}</td></tr>`;
+  for(const r of d.top_stocks)
+    document.getElementById('top-body').innerHTML+=`<tr onclick="openStock('${r.stock_id}')"><td class="clickable">${r.stock_id}</td><td>${r.days}天</td></tr>`;
+  if(s) for(const item of[...s.stocks,...s.etfs])
+    document.getElementById('signal-body').innerHTML+=`<tr onclick="openStock('${item.stock_id}')"><td class="clickable">${item.stock_id}</td><td>${item.name||'-'}</td><td>${item.score.toFixed(4)}</td><td>#${item.rank}</td></tr>`;
+  else
+    document.getElementById('signal-body').innerHTML='<tr><td colspan="4" class="loading">尚無訊號 — 執行策略評分後產生(No signals yet — run Strategy Scoring)</td></tr>';
+}
+
+const STRAT_LABELS = {
+  momentum:'動能(Momentum)', value:'價值(Value)', quality:'品質(Quality)', growth:'成長(Growth)',
+  lookback_long:'回看天數(Lookback Long)', lookback_short:'短天期(Lookback Short)', min_data_days:'最少天數(Min Data)',
+  max_pb:'最高PB(Max PB)', max_pe:'最高PE(Max PE)', min_yield:'最低殖利率(Min Yield)',
+  roe_weight:'ROE權重(ROE Weight)', leverage_weight:'槓桿權重(Leverage Weight)', stability_weight:'穩定性權重(Stability Weight)', lookback_quarters:'回看季度(Quarters)',
+  rev_weight:'營收權重(Rev Weight)', eps_weight:'EPS權重(EPS Weight)', rev_months:'營收月數(Rev Months)',
+};
+
+// ── Strategy Control ──
+async function loadStrategyConfig() {
+  const c = await fetch('/api/v1/strategies/config').then(r=>r.json());
+  config = c;
+  const wsHtml = Object.entries(c.default_weights).map(([k,v]) =>
+    `<div class="ctrl-row"><label>${STRAT_LABELS[k]||k}</label>
+      <input type="range" min="0" max="100" value="${Math.round(v*100)}" id="w-${k}" oninput="updateWeightLabel('${k}')">
+      <span class="val-label" id="wl-${k}">${(v*100).toFixed(0)}%</span></div>`
+  ).join('');
+  document.querySelector('#strategy-weights-section').innerHTML = `<h3>🏋️ 策略權重(Weights)</h3>${wsHtml}`;
+
+  let paramsHtml = '';
+  for (const [name, s] of Object.entries(c.strategies)) {
+    paramsHtml += `<div style="margin-bottom:12px"><strong style="color:#38bdf8">${STRAT_LABELS[name]||name}</strong>`;
+    paramsHtml += `<div class="param-grid">`;
+    for (const [pn, pv] of Object.entries(s.params)) {
+      const t = s.param_types[pn] || 'number';
+      paramsHtml += `<div><label>${STRAT_LABELS[pn]||pn}</label><input type="${t==='number'?'number':'text'}" value="${pv}" id="sp-${name}-${pn}" style="width:100%"></div>`;
+    }
+    paramsHtml += `</div></div>`;
+  }
+  document.querySelector('#strategy-params-section').innerHTML = `<h3>🔧 策略參數(Parameters)</h3>${paramsHtml}`;
+
+  // Set default date
+  document.getElementById('uf-as-of').value = new Date().toISOString().slice(0,10);
+}
+
+function updateWeightLabel(name) {
+  document.getElementById('wl-'+name).textContent = document.getElementById('w-'+name).value + '%';
+}
+
+async function runStrategy() {
+  const btn = document.getElementById('btn-run-strategy');
+  const status = document.getElementById('run-status');
+  btn.disabled = true; status.textContent = '執行中(Running)...';
+  try {
+    const weights = {};
+    for (const name of Object.keys(config.default_weights)) {
+      weights[name] = parseInt(document.getElementById('w-'+name).value) / 100;
+    }
+    const strategyParams = {};
+    for (const [name, s] of Object.entries(config.strategies)) {
+      const p = {};
+      for (const pn of Object.keys(s.params)) {
+        const el = document.getElementById('sp-'+name+'-'+pn);
+        const v = el.value;
+        p[pn] = isNaN(Number(v)) ? v : Number(v);
+      }
+      strategyParams[name] = p;
+    }
+    const body = {
+      weights,
+      strategy_params: strategyParams,
+      top_n_stocks: parseInt(document.getElementById('uf-top-stocks').value),
+      top_n_etfs: parseInt(document.getElementById('uf-top-etfs').value),
+      as_of_date: document.getElementById('uf-as-of').value || null,
+    };
+    const res = await fetch('/api/v1/strategies/run', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) { status.textContent = '❌ 失敗(Failed)'; return; }
+    const data = await res.json();
+    latestResult = data;
+    status.innerHTML = '✅ 完成(Done) — 共(Total) ' + data.total_candidates + ' 檔候選(Candidates)';
+    renderResult(data);
+    // switch to result
+    document.getElementById('result-section').style.display = 'block';
+    document.getElementById('result-section').scrollIntoView({behavior:'smooth'});
+  } catch(e) { status.textContent = '❌ '+e.message; }
+  finally { btn.disabled = false; }
+}
+
+function renderResult(data) {
+  const all = [...(data.stocks||[]), ...(data.etfs||[])];
+  if (!all.length) { document.getElementById('result-body').innerHTML = '<p class="loading">無結果(No results)</p>'; return; }
+  let html = `<p>評分日期(Score Date): ${data.date} · 總候選(Total Candidates): ${data.total_candidates}</p>`;
+  html += `<table><thead><tr><th>股號(ID)</th><th>分數(Score)</th><th>排名(Rank)</th></tr></thead><tbody>`;
+  for (const item of all) {
+    html += `<tr onclick="openStock('${item.stock_id}')"><td class="clickable">${item.stock_id}</td><td>${item.score}</td><td>#${item.rank}</td></tr>`;
+  }
+  html += `</tbody></table>`;
+  document.getElementById('result-body').innerHTML = html;
+}
+
+// ── Backtest ──
+async function loadBacktest() {
+  document.getElementById('bt-start').value = '2024-01-01';
+  document.getElementById('bt-end').value = new Date().toISOString().slice(0,10);
+  const rows = await fetch('/api/v1/backtest/history').then(r=>r.json()).catch(()=>[]);
+  const tb = document.getElementById('bt-history-body');
+  if (!rows.length) { tb.innerHTML = '<tr><td colspan="6" class="loading">尚無回測紀錄(No backtest history)</td></tr>'; return; }
+  for (const r of rows) {
+    tb.innerHTML += `<tr onclick="openStock('${r.run_id}')"><td style="font-family:monospace;font-size:.75rem">${(r.run_id||'').slice(0,8)}</td>
+      <td>${r.start_date||''}→${r.end_date||''}</td>
+      <td>${r.total_return!=null?(r.total_return*100).toFixed(2)+'%':'-'}</td>
+      <td>${r.cagr!=null?(r.cagr*100).toFixed(2)+'%':'-'}</td>
+      <td>${r.sharpe!=null?r.sharpe.toFixed(2):'-'}</td>
+      <td>${r.max_drawdown!=null?r.max_drawdown.toFixed(2)+'%':'-'}</td></tr>`;
+  }
+}
+
+async function runBacktest() {
+  const btn = document.querySelector('#tab-backtest .btn-warning');
+  const status = document.getElementById('bt-status');
+  btn.disabled = true; status.textContent = '執行回測中(Backtesting)...';
+  try {
+    const weights = {};
+    for (const name of Object.keys(config.default_weights || DEFAULT_WEIGHTS)) {
+      const el = document.getElementById('w-'+name);
+      weights[name] = el ? parseInt(el.value)/100 : (config.default_weights||{})[name];
+    }
+    const res = await fetch('/api/v1/backtest/run', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        start_date: document.getElementById('bt-start').value,
+        end_date: document.getElementById('bt-end').value || null,
+        strategy_weights: weights,
+      }),
+    });
+    if (!res.ok) { status.textContent = '❌ 回測失敗(Backtest Failed)'; return; }
+    const data = await res.json();
+    status.innerHTML = '✅ 回測完成(Done) — ID: ' + data.run_id.slice(0,8) + '...';
+    loadBacktest();
+  } catch(e) { status.textContent = '❌ '+e.message; }
+  finally { btn.disabled = false; }
+}
+
+// ── Init ──
+loadDashboard();
+loadStrategyConfig().then(() => { /* wait */ });
+loadBacktest();
+</script>
+</body>
+</html>"""

@@ -21,14 +21,8 @@ def test_init_db():
 
 
 def test_init_db_idempotent():
-    db_path = "/tmp/test_tw_quant_idem.duckdb"
-    db = Database(db_path)
+    db = Database(":memory:")
     db.init_db()
     db.init_db()
-    conn = db.connect()
-    tables = conn.execute(
-        "SELECT table_name FROM information_schema.tables WHERE table_schema='main'"
-    ).fetchall()
-    assert len(tables) == 8
-    conn.close()
-    os.remove(db_path)
+    tables = db.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'main'").fetchall()
+    assert len(tables) == 9

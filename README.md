@@ -44,3 +44,16 @@ source .venv/bin/activate
 python scripts/run_demo.py
 ```
 
+**5. frontend
+
+可以啟動前端看資料：
+
+```
+cd ~/Projects/tw-quant-selector
+source .venv/bin/activate
+uvicorn tw_quant_selector.api.app:app --reload
+```
+然後打開瀏覽器 http://127.0.0.1:8000 就能看到：
+
+
+

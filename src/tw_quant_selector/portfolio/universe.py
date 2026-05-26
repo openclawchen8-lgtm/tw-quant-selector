@@ -62,16 +62,21 @@ def _filter_static(db, as_of_date: date, stocks_df):
     excluded_keywords = {"-KY", "ＫＹ"}
 
     candidates = []
-    for _, row in vals.iterrows():
+    for _, row in vals.replace({pd.NA: None}).iterrows():
         sid = row["stock_id"]
-        ind = (row.get("industry") or "").strip()
-        name = (row.get("stock_name") or "").upper()
+        ind = str(row.get("industry") or "").strip()
+        name = str(row.get("stock_name") or "").upper()
         if ind in excluded_industries:
             continue
         if any(kw in name for kw in excluded_keywords):
             continue
         cap = row.get("market_cap")
-        if cap is None or (hasattr(cap, "__float__") and pd.isna(cap)) or cap < Decimal("3000000000"):
+        if cap is None or (isinstance(cap, float) and (cap != cap)):
+            continue
+        try:
+            if cap < 3000000000:
+                continue
+        except TypeError:
             continue
         candidates.append(sid)
     return [s for s in stocks_df.to_dict("records") if s["stock_id"] in set(candidates)]
