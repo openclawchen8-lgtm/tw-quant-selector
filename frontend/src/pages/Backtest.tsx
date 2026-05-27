@@ -228,7 +228,7 @@ export default function Backtest() {
             <>
               {/* Equity curve chart */}
               <div className={styles.chartCard}>
-                <h3 id="equity-label">累積淨值 <span className={styles.legend}><span style={{color:'var(--color-bull)'}}>● 策略</span> <span style={{color:'var(--text-muted)'}}>○ 0050</span></span></h3>
+                <h3 id="equity-label">累積淨值 <span className={styles.legend}><span style={{color:'var(--color-bull)', borderBottom: '2px solid var(--color-bull)'}}>— 策略（實線）</span> <span style={{color:'var(--text-muted)', borderBottom: '1px dashed var(--text-muted)'}}>--- 0050（虛線）</span></span></h3>
                 <div style={{ position: 'relative' }}>
                   {chartLoading ? <SkeletonLoader variant="chart" height={250} children={<></>} /> : (
                     equityData.length === 0 ? <div style={{ height: 250, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>尚無淨值資料</div> : <BacktestChart data={equityData} height={250} searchParams={searchParams} setSearchParams={setSearchParams} />
@@ -406,19 +406,21 @@ function BacktestChart({
 
     chartRef.current = chart;
 
-    // 策略線
+    // 策略線（實線）
     const strategySeries = chart.addSeries(LineSeries, {
       color: '#38bdf8',
       lineWidth: 2,
+      lineStyle: 0, // Solid
       lastValueVisible: true,
       priceLineVisible: false,
     });
     strategySeriesRef.current = strategySeries;
 
-    // 基準線
+    // 基準線（虛線）
     const benchmarkSeries = chart.addSeries(LineSeries, {
       color: '#64748b',
       lineWidth: 1,
+      lineStyle: 2, // Dashed
       lastValueVisible: true,
       priceLineVisible: false,
     });

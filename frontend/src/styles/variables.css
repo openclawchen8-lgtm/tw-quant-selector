@@ -194,6 +194,24 @@
   --sidebar-expanded: 240px;
   --sidebar-collapsed: 56px;
 
+  /* ═════════════════════════════════════════════════════
+     Z-INDEX TOKENS (Semantic)
+     Stacking order for all floating layers.
+     ════════════════════════════════════════════════════ */
+
+  /* ── Z-index stack ── */
+  --z-content:   1;    /* 內容層：一般內容 */
+  --z-sticky:    10;   /* 黏性層：header、sidebar */
+  --z-sidebar:   20;   /* 側邊欄：展開的 sidebar */
+  --z-dropdown:   30;   /* 下拉選單：select、dropdown */
+  --z-tooltip:    150;  /* 工具提示：tooltip（高於 popover） */
+  --z-popover:    50;   /* 彈出層：popover、picker */
+  --z-modal-bg:   200;  /* Modal 背景：半透明遮罩 */
+  --z-modal:      210;  /* Modal 內容：對話框本體 */
+  --z-toast:      220;  /* 提示訊息：toast 通知（在 Modal 上方） */
+  --z-search:     300;  /* 搜尋層：全域搜尋 */
+  --z-critical:   999;  /* 最高層：緊急公告、debug */
+
 
   /* ══════════════════════════════════════════════════════
      TIER 3 — COMPONENT TOKENS  (defaults, overrideable)
