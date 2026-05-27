@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 interface ShortcutConfig {
   key: string;

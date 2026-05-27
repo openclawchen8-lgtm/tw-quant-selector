@@ -15,6 +15,25 @@ export default function Layout() {
   const [searchResults, setSearchResults] = useState<StockSearchResult[]>([]);
   const [showSearch, setShowSearch] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
+  const toastShown = useRef(false);
+
+  // T056: 首次進入提示（3秒後顯示快捷鍵提示）
+  useEffect(() => {
+    if (toastShown.current) return;
+    const dismissed = localStorage.getItem('shortcut-help-dismissed');
+    if (dismissed) return;
+    
+    const timer = setTimeout(() => {
+      // 使用全域 toast 系統（透過 ToastContext）
+      const event = new CustomEvent('toast:add', {
+        detail: { message: '💡 按 ⌘K 可快速搜尋股票', severity: 'low' }
+      });
+      window.dispatchEvent(event);
+      toastShown.current = true;
+    }, 3000);
+    
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 768px)');

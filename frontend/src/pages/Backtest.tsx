@@ -352,11 +352,27 @@ function BacktestChart({
         e.preventDefault();
         if (chartRef.current && data.length > 0) {
           const chart = chartRef.current;
-          const firstDate = new Date(data[0].date).getTime() / 1000;
-          const secondDate = new Date(data[Math.min(29, data.length - 1)].date).getTime() / 1000;
+          const firstDate = data[0].date; // 假設格式為 'YYYY-MM-DD'
+          const secondDate = data[Math.min(29, data.length - 1)].date;
           chart.timeScale().setVisibleRange({
-            from: firstDate,
-            to: secondDate,
+            from: firstDate as any,
+            to: secondDate as any,
+          });
+        }
+        return;
+      }
+      
+      // End: 跳到最右側（最新日期）
+      if (e.key === 'End') {
+        e.preventDefault();
+        if (chartRef.current && data.length > 0) {
+          const chart = chartRef.current;
+          const lastIndex = data.length - 1;
+          const lastDate = data[lastIndex].date;
+          const prevDate = data[Math.max(0, lastIndex - 29)].date;
+          chart.timeScale().setVisibleRange({
+            from: prevDate as any,
+            to: lastDate as any,
           });
         }
         return;
