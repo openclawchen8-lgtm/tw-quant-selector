@@ -24,6 +24,8 @@ interface BacktestRun {
   max_drawdown: number | null;
 }
 
+import SkeletonLoader from '../components/SkeletonLoader';
+
 export default function Backtest() {
   const [startDate, setStartDate] = useState('2024-01-01');
   const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10));
@@ -34,6 +36,7 @@ export default function Backtest() {
   const [history, setHistory] = useState<BacktestRun[]>([]);
   const [result, setResult] = useState<BacktestRun | null>(null);
   const [equityData, setEquityData] = useState<EquityPoint[]>([]);
+  const [chartLoading, setChartLoading] = useState(false);
 
   useEffect(() => {
     apiFetch<BacktestRun[]>('/api/v1/backtest/history')
@@ -43,9 +46,10 @@ export default function Backtest() {
 
   useEffect(() => {
     if (result?.run_id) {
+      setChartLoading(true);
       fetchBacktestEquity(result.run_id)
-        .then(setEquityData)
-        .catch(() => setEquityData([]));
+        .then(data => { setEquityData(data); setChartLoading(false); })
+        .catch(() => { setEquityData([]); setChartLoading(false); });
     } else {
       setEquityData([]);
     }
@@ -165,14 +169,18 @@ export default function Backtest() {
               <div className={styles.chartCard}>
                 <h3 id="equity-label">累積淨值 <span className={styles.legend}><span style={{color:'var(--color-bull)'}}>● 策略</span> <span style={{color:'var(--text-muted)'}}>○ 0050</span></span></h3>
                 <div style={{ position: 'relative' }}>
-                  <BacktestChart data={equityData} height={250} />
+                  {chartLoading ? <SkeletonLoader variant="chart" height={250} /> : (
+                    equityData.length === 0 ? <div style={{ height: 250, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>尚無淨值資料</div> : <BacktestChart data={equityData} height={250} />
+                  )}
                 </div>
               </div>
 
               {/* Drawdown chart */}
               <div className={styles.chartCard}>
                 <h3 id="dd-label">回撤 Drawdown</h3>
-                <DrawdownChart data={equityData} height={80} />
+                {chartLoading ? <SkeletonLoader variant="chart" height={80} /> : (
+                  equityData.length === 0 ? <div style={{ height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>尚無回撤資料</div> : <DrawdownChart data={equityData} height={80} />
+                )}
               </div>
 
               {/* Metric grid */}

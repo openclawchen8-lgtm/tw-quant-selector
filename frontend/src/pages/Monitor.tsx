@@ -65,8 +65,8 @@ export default function Monitor() {
     return (
       <div className={styles.page}>
         <EmptyState
+          scenario="failed"
           title="連線錯誤"
-          icon="📡"
           message="無法取得監控資料，後端可能尚未啟動"
           actionLabel="重試"
           actionHref=""

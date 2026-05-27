@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import SkeletonLoader from './components/SkeletonLoader';
 import Layout from './components/Layout';
@@ -24,6 +24,11 @@ function PageFallback() {
   return <div style={{ padding: '32px' }}><SkeletonLoader variant="card" /><SkeletonLoader variant="table" rows={6} /></div>;
 }
 
+function AnimatedOutlet({ children }: { children: React.ReactNode }) {
+  const location = useLocation();
+  return <div key={location.pathname} className="route-page">{children}</div>;
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -31,15 +36,15 @@ export default function App() {
         <BrowserRouter>
           <Routes>
             <Route element={<Layout />}>
-              <Route path="/" element={<Suspense fallback={<PageFallback />}><ErrorBoundary><Dashboard /></ErrorBoundary></Suspense>} />
-              <Route path="/signals" element={<Suspense fallback={<PageFallback />}><ErrorBoundary><Signals /></ErrorBoundary></Suspense>} />
-              <Route path="/signals/:id" element={<Suspense fallback={<PageFallback />}><ErrorBoundary><StockDetail /></ErrorBoundary></Suspense>} />
-              <Route path="/portfolio" element={<Suspense fallback={<PageFallback />}><ErrorBoundary><Portfolio /></ErrorBoundary></Suspense>} />
-              <Route path="/backtest" element={<Suspense fallback={<PageFallback />}><ErrorBoundary><Backtest /></ErrorBoundary></Suspense>} />
-              <Route path="/backtest/:runId" element={<Suspense fallback={<PageFallback />}><ErrorBoundary><BacktestDetail /></ErrorBoundary></Suspense>} />
-              <Route path="/strategy" element={<Suspense fallback={<PageFallback />}><ErrorBoundary><Strategy /></ErrorBoundary></Suspense>} />
-              <Route path="/monitor" element={<Suspense fallback={<PageFallback />}><ErrorBoundary><Monitor /></ErrorBoundary></Suspense>} />
-              <Route path="/settings" element={<Suspense fallback={<PageFallback />}><ErrorBoundary><Settings /></ErrorBoundary></Suspense>} />
+              <Route path="/" element={<AnimatedOutlet><Suspense fallback={<PageFallback />}><ErrorBoundary><Dashboard /></ErrorBoundary></Suspense></AnimatedOutlet>} />
+              <Route path="/signals" element={<AnimatedOutlet><Suspense fallback={<PageFallback />}><ErrorBoundary><Signals /></ErrorBoundary></Suspense></AnimatedOutlet>} />
+              <Route path="/signals/:id" element={<AnimatedOutlet><Suspense fallback={<PageFallback />}><ErrorBoundary><StockDetail /></ErrorBoundary></Suspense></AnimatedOutlet>} />
+              <Route path="/portfolio" element={<AnimatedOutlet><Suspense fallback={<PageFallback />}><ErrorBoundary><Portfolio /></ErrorBoundary></Suspense></AnimatedOutlet>} />
+              <Route path="/backtest" element={<AnimatedOutlet><Suspense fallback={<PageFallback />}><ErrorBoundary><Backtest /></ErrorBoundary></Suspense></AnimatedOutlet>} />
+              <Route path="/backtest/:runId" element={<AnimatedOutlet><Suspense fallback={<PageFallback />}><ErrorBoundary><BacktestDetail /></ErrorBoundary></Suspense></AnimatedOutlet>} />
+              <Route path="/strategy" element={<AnimatedOutlet><Suspense fallback={<PageFallback />}><ErrorBoundary><Strategy /></ErrorBoundary></Suspense></AnimatedOutlet>} />
+              <Route path="/monitor" element={<AnimatedOutlet><Suspense fallback={<PageFallback />}><ErrorBoundary><Monitor /></ErrorBoundary></Suspense></AnimatedOutlet>} />
+              <Route path="/settings" element={<AnimatedOutlet><Suspense fallback={<PageFallback />}><ErrorBoundary><Settings /></ErrorBoundary></Suspense></AnimatedOutlet>} />
             </Route>
           </Routes>
         </BrowserRouter>

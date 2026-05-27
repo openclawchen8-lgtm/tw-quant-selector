@@ -494,18 +494,48 @@ def signals_by_date(
 
 
 def _get_signals(signal_date: date, strategy: str, top_n: int, include_etf: bool) -> SignalResponse:
+    prev_date = db.execute(
+        "SELECT MAX(signal_date) FROM signals WHERE signal_date < ? AND strategy = ?",
+        [signal_date, strategy]
+    ).fetchone()
+    prev = prev_date[0] if prev_date and prev_date[0] else None
+
     rows = db.execute(
-        """SELECT s.stock_id, st.stock_name, s.score, s.rank
+        """SELECT s.stock_id, st.stock_name, s.score, s.rank,
+                  m.score AS momentum, v.score AS value, q.score AS quality, g.score AS growth,
+                  p.rank AS prev_rank
            FROM signals s
            LEFT JOIN stocks st ON s.stock_id = st.stock_id
+           LEFT JOIN signals m ON m.signal_date = s.signal_date AND m.stock_id = s.stock_id AND m.strategy = 'momentum'
+           LEFT JOIN signals v ON v.signal_date = s.signal_date AND v.stock_id = s.stock_id AND v.strategy = 'value'
+           LEFT JOIN signals q ON q.signal_date = s.signal_date AND q.stock_id = s.stock_id AND q.strategy = 'quality'
+           LEFT JOIN signals g ON g.signal_date = s.signal_date AND g.stock_id = s.stock_id AND g.strategy = 'growth'
+           LEFT JOIN signals p ON p.signal_date = ? AND p.stock_id = s.stock_id AND p.strategy = s.strategy
            WHERE s.signal_date = ? AND s.strategy = ?
            ORDER BY s.rank LIMIT ?""",
-        [signal_date, strategy, top_n],
+        [prev, signal_date, strategy, top_n],
     ).fetchall()
+
     stocks = []
     etfs = []
     for r in rows:
-        item = SignalItem(stock_id=r[0], name=r[1], score=float(r[2]) if r[2] else 0, rank=r[3] or 0)
+        factor_scores = {}
+        for i, k in enumerate(['momentum', 'value', 'quality', 'growth']):
+            v = r[4 + i]
+            if v is not None:
+                factor_scores[k] = float(v)
+
+        prev_rank = r[8]
+        current_rank = r[3] or 0
+        rank_change = (prev_rank - current_rank) if prev_rank is not None else None
+
+        item = SignalItem(
+            stock_id=r[0], name=r[1],
+            score=float(r[2]) if r[2] else 0,
+            rank=current_rank,
+            rank_change=rank_change,
+            factor_scores=factor_scores if factor_scores else None,
+        )
         if r[0] in {"0050", "0051", "0052", "0056", "00878", "00881", "006208"}:
             etfs.append(item)
         else:

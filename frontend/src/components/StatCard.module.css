@@ -51,7 +51,7 @@
 .skelLabel, .skelValue, .skelDelta {
   background: var(--bg-elevated);
   border-radius: var(--radius-tag);
-  animation: shimmer 1.5s infinite;
+  animation: shimmer var(--dur-shimmer) infinite;
 }
 
 .skelLabel { width: 60%; height: 13px; }

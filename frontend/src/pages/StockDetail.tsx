@@ -90,7 +90,7 @@ export default function StockDetail() {
                     </defs>
                     <line x1="0" y1="40" x2="300" y2="40" stroke="var(--bg-border)" strokeWidth="1" strokeDasharray="4 2" />
                     <path d={generateSparklinePath(20)} fill={`url(#grad-${f})`} />
-                    <path d={generateSparklinePath(20)} fill="none" stroke={`var(--color-${f})`} strokeWidth="1.5" />
+                    <path d={generateSparklinePath(20)} fill="none" stroke={`var(--color-${f})`} strokeWidth="1.5" className="sparkline-path" style={{ '--path-len': '400' } as React.CSSProperties} />
                     <circle cx="300" cy="30" r="3" fill={`var(--color-${f})`} />
                   </svg>
                 </div>

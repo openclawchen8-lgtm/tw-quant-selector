@@ -1,4 +1,7 @@
+/* Component tokens: override :root defaults at this scope */
 .wrapper {
+  --table-row-height: 48px;
+  --table-row-height-dense: 36px;
   border: 1px solid var(--bg-border);
   border-radius: var(--radius-card);
   overflow-x: auto;
@@ -37,11 +40,11 @@
 
 .innerTable { width: 100%; border-collapse: collapse; }
 
-.dataRow { cursor: pointer; height: 48px; }
-.denseRow { height: 36px; }
+.dataRow { cursor: pointer; height: var(--table-row-height); }
+.denseRow { height: var(--table-row-height-dense); }
 .dataRow td { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--bg-border); }
 .denseRow td { padding: var(--space-1) var(--space-2); }
-.dataRow:hover td { background: var(--bg-elevated); transition: background 0.1s; }
+.dataRow:hover td { background: var(--bg-elevated); transition: background var(--dur-hover); }
 
 .focused td {
   border-left: 2px solid var(--color-accent);

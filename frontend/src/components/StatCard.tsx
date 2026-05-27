@@ -1,3 +1,5 @@
+import { useEffect, useRef } from 'react';
+import { animateNumber } from '../utils/animate';
 import styles from './StatCard.module.css';
 
 interface StatCardProps {
@@ -51,6 +53,21 @@ export default function StatCard({
 
   const formatted = error ? '—' : formatValue(value, format);
   const errorStyle = error ? styles.error : '';
+  const valueRef = useRef<HTMLDivElement>(null);
+  const prevValue = useRef(value);
+
+  useEffect(() => {
+    if (loading || error || value === prevValue.current) return;
+    const el = valueRef.current;
+    if (!el) return;
+    const fmt = (v: number) => formatValue(v, format);
+    const isNumeric = typeof value === 'number' && typeof prevValue.current === 'number';
+    const cancel = isNumeric
+      ? animateNumber(el, prevValue.current as number, value as number, 400, fmt)
+      : (() => { el.textContent = formatted; return () => {}; })();
+    prevValue.current = value;
+    return cancel;
+  }, [value, format, loading, error, formatted]);
 
   const ariaDesc = delta != null
     ? `${label}: ${formatted}（${deltaIcon(delta)} ${Math.abs(delta * 100).toFixed(2)}%）`
@@ -58,7 +75,7 @@ export default function StatCard({
   return (
     <div className={`${styles.card} ${styles[variant]} ${errorStyle}`} role="figure" aria-label={ariaDesc}>
       <div className={styles.label}>{label}</div>
-      <div className={`${styles.value} font-data`} aria-hidden="true">{formatted}</div>
+      <div ref={valueRef} className={`${styles.value} font-data`} aria-hidden="true">{formatted}</div>
       {delta != null && (
         <div className={`${styles.delta} ${deltaColorClass(delta)}`} aria-hidden="true">
           {deltaIcon(delta)} {deltaLabel ? `${formatValue(Math.abs(delta), 'percent')} ${deltaLabel}` : formatValue(delta, 'percent')}

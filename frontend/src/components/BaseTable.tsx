@@ -229,10 +229,14 @@ export default function BaseTable<T extends Record<string, any>>({
                           );
                         })}
                       </tr>
-                      {isExpanded && renderRowDetail && (
+                      {renderRowDetail && (
                         <tr className={styles.expandedRow}>
-                          <td colSpan={row.getVisibleCells().length} className={styles.inlineDetail}>
-                            {renderRowDetail(raw as T)}
+                          <td colSpan={row.getVisibleCells().length}>
+                            <div className={`expand-collapse ${isExpanded ? 'open' : ''}`}>
+                              <div className={styles.inlineDetail}>
+                                {renderRowDetail(raw as T)}
+                              </div>
+                            </div>
                           </td>
                         </tr>
                       )}
