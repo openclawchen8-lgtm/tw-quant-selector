@@ -265,3 +265,135 @@
 .resetZoomBtn:active {
   transform: scale(0.95);
 }
+
+/* T052: Comparison Mode */
+.compareContainer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.compareHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-2);
+}
+
+.compareHeader h3 {
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.exitCompareBtn {
+  background: var(--bg-surface);
+  border: 1px solid var(--bg-border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.exitCompareBtn:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.compareHeaders {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.compareHeaderA, .compareHeaderB {
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  border: 1px solid var(--bg-border);
+}
+
+.compareHeaderA {
+  border-left: 3px solid #38bdf8;
+}
+
+.compareHeaderB {
+  border-left: 3px solid #22c55e;
+}
+
+.compareLabel {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-1);
+}
+
+.compareDate {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.compareMetrics {
+  background: var(--bg-surface);
+  border: 1px solid var(--bg-border);
+  border-radius: var(--radius-card);
+  padding: var(--space-3);
+}
+
+.compareRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--bg-border);
+  align-items: center;
+}
+
+.compareRow:last-child {
+  border-bottom: none;
+}
+
+.compareMetricLabel {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.compareValueA, .compareValueB {
+  font-family: var(--font-data);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
+.compareValueA {
+  color: #38bdf8;
+}
+
+.compareValueB {
+  color: #22c55e;
+}
+
+.compareDiff {
+  font-family: var(--font-data);
+  font-size: var(--font-size-sm);
+  text-align: right;
+}
+
+.compareLegend {
+  display: flex;
+  gap: var(--space-4);
+  margin-bottom: var(--space-2);
+  font-size: var(--font-size-sm);
+}
+
+/* History list checkbox */
+.historyCheckbox {
+  margin-right: var(--space-2);
+  cursor: pointer;
+}
+
+.historyItem.selected {
+  background: var(--bg-elevated);
+  border-color: var(--color-accent);
+}

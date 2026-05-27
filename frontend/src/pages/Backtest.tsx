@@ -38,6 +38,13 @@ export default function Backtest() {
   const [result, setResult] = useState<BacktestRun | null>(null);
   const [equityData, setEquityData] = useState<EquityPoint[]>([]);
   const [chartLoading, setChartLoading] = useState(false);
+  
+  // T052: 比較模式狀態
+  const [compareIds, setCompareIds] = useState<string[]>([]);
+  const [compareDataA, setCompareDataA] = useState<EquityPoint[]>([]);
+  const [compareDataB, setCompareDataB] = useState<EquityPoint[]>([]);
+  
+  const isCompareMode = compareIds.length === 2;
 
   useEffect(() => {
     apiFetch<BacktestRun[]>('/api/v1/backtest/history')
@@ -86,6 +93,26 @@ export default function Backtest() {
       setRunning(false);
     }
   };
+
+  // T052: 勾選處理
+  const toggleCompare = (runId: string) => {
+    if (compareIds.includes(runId)) {
+      setCompareIds(compareIds.filter(id => id !== runId));
+    } else if (compareIds.length < 2) {
+      setCompareIds([...compareIds, runId]);
+    }
+  };
+
+  // T052: 載入比較資料
+  useEffect(() => {
+    if (compareIds.length === 2) {
+      fetchBacktestEquity(compareIds[0]).then(setCompareDataA).catch(() => setCompareDataA([]));
+      fetchBacktestEquity(compareIds[1]).then(setCompareDataB).catch(() => setCompareDataB([]));
+    } else {
+      setCompareDataA([]);
+      setCompareDataB([]);
+    }
+  }, [compareIds]);
 
   return (
     <div className={styles.page}>
@@ -143,7 +170,18 @@ export default function Backtest() {
             ) : (
               <div className={styles.historyList}>
                 {history.map((r) => (
-                  <div key={r.run_id} className={styles.historyItem} onClick={() => setResult(r)}>
+                  <div 
+                    key={r.run_id} 
+                    className={`${styles.historyItem} ${compareIds.includes(r.run_id) ? styles.selected : ''}`}
+                    onClick={() => toggleCompare(r.run_id)}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={compareIds.includes(r.run_id)}
+                      onChange={() => {}}
+                      onClick={(e) => e.stopPropagation()}
+                      className={styles.historyCheckbox}
+                    />
                     <span className={styles.historyDate}>{r.start_date || ''}</span>
                     <span className="font-data" style={{ color: 'var(--color-bull-text)' }}>
                       {formatNumber(r.cagr, { type: 'percent' })}
@@ -160,7 +198,16 @@ export default function Backtest() {
 
         {/* Right panel */}
         <div className={styles.rightPanel}>
-          {!result ? (
+          {/* T052: 比較模式 */}
+          {isCompareMode ? (
+            <CompareView 
+              runA={history.find(r => r.run_id === compareIds[0])!}
+              runB={history.find(r => r.run_id === compareIds[1])!}
+              dataA={compareDataA}
+              dataB={compareDataB}
+              onExit={() => setCompareIds([])}
+            />
+          ) : !result ? (
             <div className={styles.placeholder}>
               <p>設定參數後點擊「執行回測」</p>
             </div>
@@ -567,6 +614,157 @@ function MetricCell({ label, value, fmt, bull, bear, benchmark }: {
       <div className={`font-data ${styles.metricValue}`} style={{ color }}>
         {formatted}
         {benchmark && <span className={styles.pctIcon}>▮</span>}
+      </div>
+    </div>
+  );
+}
+
+// T052: 比較模式組件
+function CompareView({ 
+  runA, 
+  runB, 
+  dataA, 
+  dataB,
+  onExit 
+}: { 
+  runA: BacktestRun; 
+  runB: BacktestRun; 
+  dataA: EquityPoint[]; 
+  dataB: EquityPoint[];
+  onExit: () => void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<IChartApi | null>(null);
+
+  // 計算差異百分比
+  const calcDiff = (a: number | null, b: number | null): { value: number; isPositive: boolean; isSmall: boolean } | null => {
+    if (a === null || b === null) return null;
+    const diff = ((b - a) / Math.abs(a)) * 100;
+    return {
+      value: diff,
+      isPositive: diff > 0,
+      isSmall: Math.abs(diff) < 5,
+    };
+  };
+
+  const metrics = [
+    { key: 'total_return', label: '總報酬' },
+    { key: 'cagr', label: 'CAGR' },
+    { key: 'sharpe', label: 'Sharpe' },
+    { key: 'max_drawdown', label: '最大回撤' },
+  ];
+
+  // 建立疊加圖表
+  useEffect(() => {
+    if (!containerRef.current || dataA.length === 0 || dataB.length === 0) return;
+
+    const chart = createChart(containerRef.current, {
+      width: containerRef.current.clientWidth,
+      height: 300,
+      layout: {
+        background: { type: ColorType.Solid, color: 'transparent' },
+        textColor: '#94a3b8',
+      },
+      grid: {
+        vertLines: { color: '#1e293b' },
+        horzLines: { color: '#1e293b' },
+      },
+      rightPriceScale: { borderColor: '#334155' },
+      timeScale: { borderColor: '#334155', timeVisible: false },
+    });
+
+    chartRef.current = chart;
+
+    // A 策略線（藍色）
+    const seriesA = chart.addSeries(LineSeries, {
+      color: '#38bdf8',
+      lineWidth: 2,
+      lastValueVisible: true,
+      priceLineVisible: false,
+    });
+    seriesA.setData(dataA.map(p => ({ time: p.date, value: p.value })));
+
+    // B 策略線（綠色）
+    const seriesB = chart.addSeries(LineSeries, {
+      color: '#22c55e',
+      lineWidth: 2,
+      lastValueVisible: true,
+      priceLineVisible: false,
+    });
+    seriesB.setData(dataB.map(p => ({ time: p.date, value: p.value })));
+
+    chart.timeScale().fitContent();
+
+    const handleResize = () => {
+      if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth });
+    };
+    window.addEventListener('resize', handleResize);
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      chart.remove();
+    };
+  }, [dataA, dataB]);
+
+  return (
+    <div className={styles.compareContainer}>
+      <div className={styles.compareHeader}>
+        <h3>回測比較</h3>
+        <button className={styles.exitCompareBtn} onClick={onExit}>✕ 退出比較</button>
+      </div>
+      
+      {/* 並排標頭 */}
+      <div className={styles.compareHeaders}>
+        <div className={styles.compareHeaderA}>
+          <div className={styles.compareLabel}>A 策略</div>
+          <div className={styles.compareDate}>{runA.start_date}</div>
+        </div>
+        <div className={styles.compareHeaderB}>
+          <div className={styles.compareLabel}>B 策略</div>
+          <div className={styles.compareDate}>{runB.start_date}</div>
+        </div>
+      </div>
+
+      {/* 差異指標格 */}
+      <div className={styles.compareMetrics}>
+        {metrics.map(({ key, label }) => {
+          const valA = runA[key as keyof BacktestRun] as number | null;
+          const valB = runB[key as keyof BacktestRun] as number | null;
+          const diff = calcDiff(valA, valB);
+          
+          return (
+            <div key={key} className={styles.compareRow}>
+              <div className={styles.compareMetricLabel}>{label}</div>
+              <div className={styles.compareValueA}>
+                {valA !== null ? formatNumber(key === 'sharpe' ? valA : valA / 100, { type: key === 'sharpe' ? 'score' : 'percent' }) : '—'}
+              </div>
+              <div className={styles.compareValueB}>
+                {valB !== null ? formatNumber(key === 'sharpe' ? valB : valB / 100, { type: key === 'sharpe' ? 'score' : 'percent' }) : '—'}
+              </div>
+              <div 
+                className={styles.compareDiff}
+                style={{ 
+                  color: diff?.isSmall ? 'var(--text-muted)' : diff?.isPositive ? 'var(--color-bull-text)' : 'var(--color-bear-text)' 
+                }}
+                title={diff ? `差異 ${diff.value.toFixed(2)}%` : ''}
+              >
+                {diff ? (
+                  diff.isSmall ? '─' : `${diff.isPositive ? '▲' : '▼'} ${Math.abs(diff.value).toFixed(1)}%`
+                ) : '—'}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* 疊加淨值曲線圖 */}
+      <div className={styles.chartCard}>
+        <h3>疊加淨值曲線</h3>
+        <div className={styles.compareLegend}>
+          <span style={{ color: '#38bdf8' }}>● A 策略</span>
+          <span style={{ color: '#22c55e' }}>● B 策略</span>
+        </div>
+        <div ref={containerRef} style={{ minHeight: 300 }} />
       </div>
     </div>
   );
