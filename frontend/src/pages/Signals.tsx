@@ -28,8 +28,8 @@ export default function Signals() {
   const [error, setError] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState(searchParams.get('sort') || 'score');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
-  const [showEtf, setShowEtf] = useState(true);
-  const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [showEtf, setShowEtf] = useState(searchParams.get('etf') !== '0');
+  const [expandedRow, setExpandedRow] = useState<string | null>(searchParams.get('stock'));
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const [strategy, setStrategy] = useState(searchParams.get('strategy') || 'composite');
   const tableRef = useRef<HTMLTableElement>(null);
@@ -43,8 +43,15 @@ export default function Signals() {
   }, [strategy]);
 
   useEffect(() => {
-    setSearchParams({ sort: sortKey, dir: sortDir, strategy }, { replace: true });
-  }, [sortKey, sortDir, strategy]);
+    setSearchParams(prev => {
+      prev.set('sort', sortKey);
+      prev.set('dir', sortDir);
+      prev.set('strategy', strategy);
+      if (showEtf) prev.delete('etf'); else prev.set('etf', '0');
+      if (expandedRow) prev.set('stock', expandedRow); else prev.delete('stock');
+      return prev;
+    }, { replace: true });
+  }, [sortKey, sortDir, strategy, showEtf, expandedRow]);
 
   const allItems = [...(data?.stocks || []), ...(showEtf ? data?.etfs || [] : [])];
   const sorted = [...allItems].sort((a, b) => {

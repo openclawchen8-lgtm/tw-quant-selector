@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { fetchStockDetail } from '../api/client';
 import FactorMiniBar from '../components/FactorMiniBar';
 import SkeletonLoader from '../components/SkeletonLoader';
@@ -17,11 +17,12 @@ interface RevPoint { ym: string; rev: number | null; yoy: number | null; }
 
 export default function StockDetail() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState<{
     info: StockInfo; prices: PricePoint[]; valuations: ValPoint[];
     financials: FinPoint[]; revenue: RevPoint[];
   } | null>(null);
-  const [tab, setTab] = useState<'factors' | 'financials' | 'history'>('factors');
+  const [tab, setTab] = useState<'factors' | 'financials' | 'history'>((searchParams.get('tab') as 'factors' | 'financials' | 'history') || 'factors');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -29,6 +30,10 @@ export default function StockDetail() {
     setLoading(true);
     fetchStockDetail(id).then((d: any) => { setData(d); setLoading(false); }).catch(() => setLoading(false));
   }, [id]);
+
+  useEffect(() => {
+    setSearchParams(prev => { prev.set('tab', tab); return prev; }, { replace: true });
+  }, [tab]);
 
   if (loading) {
     return <div className={styles.page}><SkeletonLoader variant="card" /><SkeletonLoader variant="table" rows={3} /></div>;
