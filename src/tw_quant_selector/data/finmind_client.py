@@ -1,6 +1,6 @@
 import os
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 import httpx
 import structlog
@@ -8,7 +8,7 @@ import structlog
 log = structlog.get_logger()
 
 FINMIND_BASE = "https://api.finmindtrade.com/api/v4/data"
-RATE_LIMIT_PER_DAY = 600
+RATE_LIMIT_PER_DAY = 600  # 免費方案: 600 req/hour（認證後）
 
 
 class FinMindClient:
@@ -20,6 +20,24 @@ class FinMindClient:
         self._headers = {"Authorization": f"Bearer {self.token}"}
         self._daily_call_count = 0
         self._reset_date = date.today()
+        self._banned_until: datetime | None = None
+        self._banned_logged: float = 0
+
+    def _check_banned(self) -> bool:
+        if self._banned_until is None:
+            return False
+        now = datetime.now()
+        if now >= self._banned_until:
+            self._banned_until = None
+            self._banned_logged = 0
+            return False
+        if now.timestamp() - self._banned_logged > 60:
+            remaining = int((self._banned_until - now).total_seconds())
+            log.warning("finmind.banned_skip", remaining_sec=remaining,
+                        remaining_min=remaining // 60,
+                        eta=self._banned_until.strftime("%H:%M:%S"))
+            self._banned_logged = now.timestamp()
+        return True
 
     def _check_rate_limit(self):
         today = date.today()
@@ -34,7 +52,8 @@ class FinMindClient:
             raise RuntimeError(f"FinMind daily limit reached ({RATE_LIMIT_PER_DAY})")
 
     def _request(self, dataset: str, params: dict[str, Any] | None = None) -> list[dict]:
-        self._check_rate_limit()
+        if self._check_banned():
+            return []
         params = {"dataset": dataset, **(params or {})}
         for attempt in range(2):
             try:
@@ -47,8 +66,25 @@ class FinMindClient:
                 return []
             except httpx.HTTPStatusError as e:
                 status = e.response.status_code
-                if status in (400, 402, 404):
-                    log.warning("finmind.skipped", dataset=dataset, status=status, detail=e.response.text[:200])
+                body = {}
+                try:
+                    body = e.response.json()
+                except Exception:
+                    pass
+                retry_after = body.get("retry_after", 0)
+                detail = body.get("msg", e.response.text[:200])
+                if retry_after > 0:
+                    eta = datetime.now() + timedelta(seconds=retry_after)
+                    eta_str = eta.strftime("%H:%M:%S")
+                    readable = f"{detail} (~{retry_after//60}min, 預計 {eta_str} 恢復)"
+                else:
+                    readable = detail
+                if status in (400, 402, 403, 404):
+                    if status == 403 and retry_after > 0:
+                        self._banned_until = datetime.now() + timedelta(seconds=retry_after)
+                        self._banned_logged = datetime.now().timestamp()
+                    log.warning("finmind.skipped", dataset=dataset, status=status,
+                                msg=readable, retry_after=retry_after)
                     return []
                 if attempt == 0:
                     wait = 2 ** attempt
