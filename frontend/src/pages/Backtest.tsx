@@ -169,7 +169,7 @@ export default function Backtest() {
               <div className={styles.chartCard}>
                 <h3 id="equity-label">累積淨值 <span className={styles.legend}><span style={{color:'var(--color-bull)'}}>● 策略</span> <span style={{color:'var(--text-muted)'}}>○ 0050</span></span></h3>
                 <div style={{ position: 'relative' }}>
-                  {chartLoading ? <SkeletonLoader variant="chart" height={250} /> : (
+                  {chartLoading ? <SkeletonLoader variant="chart" height={250} children={<></>} /> : (
                     equityData.length === 0 ? <div style={{ height: 250, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>尚無淨值資料</div> : <BacktestChart data={equityData} height={250} />
                   )}
                 </div>
@@ -178,7 +178,7 @@ export default function Backtest() {
               {/* Drawdown chart */}
               <div className={styles.chartCard}>
                 <h3 id="dd-label">回撤 Drawdown</h3>
-                {chartLoading ? <SkeletonLoader variant="chart" height={80} /> : (
+                {chartLoading ? <SkeletonLoader variant="chart" height={80} children={<></>} /> : (
                   equityData.length === 0 ? <div style={{ height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>尚無回撤資料</div> : <DrawdownChart data={equityData} height={80} />
                 )}
               </div>

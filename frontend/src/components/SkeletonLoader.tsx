@@ -5,6 +5,7 @@ interface Props {
   rows?: number;
   width?: string;
   height?: string;
+  children?: React.ReactNode;
 }
 
 export default function SkeletonLoader({ variant = 'text', rows = 4, width, height }: Props) {
