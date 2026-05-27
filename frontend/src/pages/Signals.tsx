@@ -29,7 +29,6 @@ export default function Signals() {
   const [sortKey, setSortKey] = useState(searchParams.get('sort') || 'score');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [showEtf, setShowEtf] = useState(true);
-  const [dense, setDense] = useState(false);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const [strategy, setStrategy] = useState(searchParams.get('strategy') || 'composite');
@@ -155,10 +154,6 @@ export default function Signals() {
             <input type="checkbox" checked={showEtf} onChange={() => setShowEtf((x) => !x)} />
             ETF
           </label>
-          <label className={styles.toggle}>
-            <input type="checkbox" checked={dense} onChange={() => setDense((x) => !x)} />
-            密集
-          </label>
           <button className={styles.actionBtn} onClick={() => setShowExport(true)}>
             {exporting ? '匯出中...' : '匯出'}
           </button>
@@ -176,7 +171,7 @@ export default function Signals() {
         </EmptyState>
       ) : (
         <div className={styles.tableWrapper}>
-          <table className={`${styles.table} ${dense ? styles.dense : ''}`} ref={tableRef}>
+          <table className={styles.table} ref={tableRef}>
             <thead>
               <tr>
                 <th style={{ width: 48 }} data-type="number" onClick={() => handleSort('rank')}>

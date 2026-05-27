@@ -220,6 +220,42 @@
 
   /* Tooltip */
   --tooltip-offset: 6px;
+
+  /* ══════════════════════════════════════════════════════
+     T053: DATA DENSITY SYSTEM
+     Three modes: comfortable / compact / dense
+     ══════════════════════════════════════════════════════ */
+
+  /* Default: Comfortable */
+  --density-row-height: 48px;
+  --density-font-size: 13px;
+  --density-cell-padding: 16px;
+  --density-card-padding: 16px;
+  --density-page-padding: 24px;
+  --density-factor-bar-height: 24px;
+  --density-gap: 16px;
+}
+
+/* T053: Compact Mode */
+[data-density="compact"] {
+  --density-row-height: 36px;
+  --density-font-size: 12px;
+  --density-cell-padding: 12px;
+  --density-card-padding: 12px;
+  --density-page-padding: 16px;
+  --density-factor-bar-height: 20px;
+  --density-gap: 12px;
+}
+
+/* T053: Dense Mode */
+[data-density="dense"] {
+  --density-row-height: 28px;
+  --density-font-size: 11px;
+  --density-cell-padding: 8px;
+  --density-card-padding: 8px;
+  --density-page-padding: 12px;
+  --density-factor-bar-height: 16px;
+  --density-gap: 8px;
 }
 
 /* ── BACKWARD-COMPATIBILITY ALIASES ──

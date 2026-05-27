@@ -42,7 +42,10 @@ export default function Backtest() {
   const [chartLoading, setChartLoading] = useState(false);
   
   // T052: 比較模式狀態
-  const [compareIds, setCompareIds] = useState<string[]>([]);
+  const [compareIds, setCompareIds] = useState<string[]>(() => {
+    const compareParam = searchParams.get('compare');
+    return compareParam ? [compareParam] : [];
+  });
   const [compareDataA, setCompareDataA] = useState<EquityPoint[]>([]);
   const [compareDataB, setCompareDataB] = useState<EquityPoint[]>([]);
   
@@ -110,9 +113,17 @@ export default function Backtest() {
     if (compareIds.length === 2) {
       fetchBacktestEquity(compareIds[0]).then(setCompareDataA).catch(() => setCompareDataA([]));
       fetchBacktestEquity(compareIds[1]).then(setCompareDataB).catch(() => setCompareDataB([]));
+      // T052: 同步到 URL
+      const newParams = new URLSearchParams(searchParams);
+      newParams.set('compare', compareIds[1]);
+      setSearchParams(newParams, { replace: true });
     } else {
       setCompareDataA([]);
       setCompareDataB([]);
+      // T052: 清除 URL 參數
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete('compare');
+      setSearchParams(newParams, { replace: true });
     }
   }, [compareIds]);
 

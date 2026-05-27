@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom';
+import { DensityToggle } from './DensityToggle';
 import styles from './Sidebar.module.css';
 
 const navItems = [
@@ -46,6 +47,11 @@ export default function Sidebar({ collapsed, onToggle, alertOnMonitor }: Sidebar
       </nav>
       <div className={styles.divider} />
       <div className={styles.footer}>
+        {!collapsed && (
+          <div className={styles.densityToggle}>
+            <DensityToggle />
+          </div>
+        )}
         {!collapsed && (
           <>
             <div className={styles.footerRow}>

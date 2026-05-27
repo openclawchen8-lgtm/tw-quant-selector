@@ -92,6 +92,10 @@
   gap: var(--space-1);
 }
 
+.densityToggle {
+  margin-bottom: var(--space-2);
+}
+
 .footerRow {
   display: flex;
   justify-content: space-between;

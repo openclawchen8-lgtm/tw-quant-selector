@@ -58,7 +58,7 @@
 .table thead { background: var(--bg-overlay); }
 
 .table th {
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--density-cell-padding);
   text-align: left;
   font-weight: 500;
   color: var(--text-secondary);
@@ -72,18 +72,14 @@
 .table th[data-type="number"] { text-align: right; font-family: var(--font-data); }
 
 .table td {
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--density-cell-padding);
   border-bottom: 1px solid var(--bg-border);
   vertical-align: middle;
 }
 
 .table td[data-type="number"] { text-align: right; font-family: var(--font-data); font-variant-numeric: tabular-nums; }
 
-.dense td { padding: var(--space-1) var(--space-2); }
-.dense th { padding: var(--space-1) var(--space-2); }
-
-.dataRow { cursor: pointer; height: 48px; }
-.dense .dataRow { height: 36px; }
+.dataRow { cursor: pointer; height: var(--density-row-height); }
 .dataRow:hover td { background: var(--bg-elevated); transition: background 0.1s; }
 .dataRow:focus { outline: none; }
 
