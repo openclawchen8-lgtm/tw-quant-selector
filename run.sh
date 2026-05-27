@@ -210,9 +210,9 @@ run_scheduler() {
 }
 
 docker_build() {
-  header "Docker Build (multi-stage)"
-  docker build -t tw-quant-selector "$PROJECT_DIR"
-  ok "Image built: tw-quant-selector"
+  header "Docker Build (Compose)"
+  docker compose build
+  ok "Docker Compose images built successfully"
 }
 
 docker_up() {

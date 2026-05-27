@@ -209,11 +209,10 @@ export default function Signals() {
               </tr>
             </thead>
             <tbody>
-              {stockRows.map((item, i) => (
+              {stockRows.map((item) => (
                 <SignalRow
                   key={item.stock_id}
                   item={item}
-                  index={i}
                   navigate={navigate}
                   expanded={expandedRow === item.stock_id}
                   onToggle={() => setExpandedRow(expandedRow === item.stock_id ? null : item.stock_id)}
@@ -223,11 +222,10 @@ export default function Signals() {
               {etfRows.length > 0 && (
                 <tr className={styles.groupDivider}><td colSpan={12}>─ ETFs ─</td></tr>
               )}
-              {etfRows.map((item, i) => (
+              {etfRows.map((item) => (
                 <SignalRow
                   key={item.stock_id}
                   item={item}
-                  index={i + stockRows.length}
                   navigate={navigate}
                   expanded={expandedRow === item.stock_id}
                   onToggle={() => setExpandedRow(expandedRow === item.stock_id ? null : item.stock_id)}
@@ -261,8 +259,8 @@ export default function Signals() {
   );
 }
 
-function SignalRow({ item, index, navigate, expanded, onToggle, isFocused }: {
-  item: SignalItem; index: number; navigate: (p: string) => void;
+function SignalRow({ item, navigate, expanded, onToggle, isFocused }: {
+  item: SignalItem; navigate: (p: string) => void;
   expanded: boolean; onToggle: () => void; isFocused: boolean;
 }) {
   const rc = item.rank_change;

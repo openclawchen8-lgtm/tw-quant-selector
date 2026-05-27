@@ -33,7 +33,7 @@ export default function Dashboard() {
     setLoading(true);
     setError(null);
     try {
-      const s = await fetchLatestSignals(true).catch(() => null);
+      const s = await fetchLatestSignals('composite', true).catch(() => null);
       setSignals(s as SignalsData | null);
     } catch (e: any) {
       setError(e.message);

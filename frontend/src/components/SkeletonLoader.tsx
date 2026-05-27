@@ -3,14 +3,14 @@ import styles from './SkeletonLoader.module.css';
 interface Props {
   variant?: 'text' | 'card' | 'table' | 'chart' | 'circle';
   rows?: number;
-  width?: string;
-  height?: string;
+  width?: string | number;
+  height?: string | number;
   children?: React.ReactNode;
 }
 
 export default function SkeletonLoader({ variant = 'text', rows = 4, width, height }: Props) {
-  const style = width ? { width } : undefined;
-  const hStyle = height ? { height } : undefined;
+  const style = width ? { width: typeof width === 'number' ? `${width}px` : width } : undefined;
+  const hStyle = height ? { height: typeof height === 'number' ? `${height}px` : height } : undefined;
 
   if (variant === 'card') {
     return (

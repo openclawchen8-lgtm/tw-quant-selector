@@ -2,11 +2,51 @@ services:
   app:
     build: .
     environment:
+      - PYTHONUNBUFFERED=1
       - FINMIND_TOKEN=${FINMIND_TOKEN}
       - DUCKDB_PATH=/data/tw_quant.duckdb
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - SMTP_SERVER=${SMTP_SERVER}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - EMAIL_SENDER=${EMAIL_SENDER}
+      - EMAIL_RECIPIENT=${EMAIL_RECIPIENT}
     volumes:
       - ./data:/data
       - ./output:/output
+      - ./scripts:/app/scripts
     ports:
       - "8000:8000"
     restart: unless-stopped
+
+  frontend:
+    image: node:20-alpine
+    working_dir: /app/frontend
+    volumes:
+      - ./frontend:/app/frontend
+      - /app/frontend/node_modules
+    ports:
+      - "5173:5173"
+    command: sh -c "npm install && npm run dev -- --host"
+
+  scheduler:
+    build: .
+    command: python scripts/run_daily_pipeline.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - FINMIND_TOKEN=${FINMIND_TOKEN}
+      - DUCKDB_PATH=/data/tw_quant.duckdb
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - SMTP_SERVER=${SMTP_SERVER}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - EMAIL_SENDER=${EMAIL_SENDER}
+      - EMAIL_RECIPIENT=${EMAIL_RECIPIENT}
+    volumes:
+      - ./data:/data
+      - ./output:/output
+      - ./scripts:/app/scripts

@@ -198,10 +198,13 @@ export default function Portfolio() {
   };
 
   const updateConfig = (stockId: string, updates: Partial<StockAlertConfig>) => {
-    setAlertConfigs(prev => ({
-      ...prev,
-      [stockId]: { alert_enabled: true, ...prev[stockId], ...updates }
-    }));
+    setAlertConfigs(prev => {
+      const current = prev[stockId] || { alert_enabled: true };
+      return {
+        ...prev,
+        [stockId]: { ...current, ...updates }
+      };
+    });
   };
 
   const clearConfig = (stockId: string) => {

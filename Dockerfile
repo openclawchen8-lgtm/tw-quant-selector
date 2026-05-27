@@ -10,10 +10,13 @@ RUN npm run build
 # === Stage 2: Python API + Serve Static ===
 FROM python:3.12-slim
 
+ENV PYTHONUNBUFFERED=1
+
 WORKDIR /app
 
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
+COPY scripts/ ./scripts/
 RUN pip install --no-cache-dir -e .
 
 COPY --from=frontend-builder /app/frontend/dist/ ./frontend/dist/

@@ -5,8 +5,8 @@ interface Props {
   loading: boolean;
   variant?: 'text' | 'card' | 'table' | 'chart' | 'circle';
   rows?: number;
-  width?: string;
-  height?: string;
+  width?: string | number;
+  height?: string | number;
   children: ReactNode;
 }
 

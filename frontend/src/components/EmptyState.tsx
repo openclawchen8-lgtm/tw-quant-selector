@@ -7,11 +7,13 @@ interface Props {
   scenario?: Scenario;
   icon?: string;
   title?: string;
-  message: string;
+  message?: string;
+  children?: React.ReactNode;
   reasons?: string[];
   actionLabel?: string;
   actionHref?: string;
   onAction?: () => void;
+  onRetry?: () => void;
 }
 
 const SCENARIO_ICONS: Record<Scenario, string> = {
@@ -26,12 +28,17 @@ export default function EmptyState({
   icon,
   title,
   message,
+  children,
   reasons,
-  actionLabel = '前往資料監控',
+  actionLabel,
   actionHref = '/monitor',
   onAction,
+  onRetry,
 }: Props) {
   const iconHtml = scenario ? SCENARIO_ICONS[scenario] : null;
+  const handleAction = onAction || onRetry;
+  const resolvedActionLabel = actionLabel || (onRetry ? '重新嘗試' : '前往資料監控');
+
   return (
     <div className={styles.root}>
       {iconHtml ? (
@@ -40,19 +47,19 @@ export default function EmptyState({
         <span className={styles.icon}>{icon || ''}</span>
       )}
       {title && <h3 className={styles.title}>{title}</h3>}
-      <p className={styles.message}>{message}</p>
+      <p className={styles.message}>{message || children}</p>
       {reasons && reasons.length > 0 && (
         <ul className={styles.reasons}>
           {reasons.map((r, i) => <li key={i}>{r}</li>)}
         </ul>
       )}
-      {onAction ? (
-        <button className={styles.action} onClick={onAction}>{actionLabel}</button>
+      {handleAction ? (
+        <button className={styles.action} onClick={handleAction}>{resolvedActionLabel}</button>
       ) : (
         actionHref.startsWith('/') ? (
-          <Link className={styles.action} to={actionHref}>{actionLabel}</Link>
+          <Link className={styles.action} to={actionHref}>{resolvedActionLabel}</Link>
         ) : (
-          <a className={styles.action} href={actionHref}>{actionLabel}</a>
+          <a className={styles.action} href={actionHref}>{resolvedActionLabel}</a>
         )
       )}
     </div>
