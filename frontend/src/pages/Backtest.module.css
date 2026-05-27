@@ -397,3 +397,86 @@
   background: var(--bg-elevated);
   border-color: var(--color-accent);
 }
+
+/* T051: Brush Selection */
+.brushSelection {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: rgba(56, 189, 248, 0.15);
+  border-left: 1px dashed #38bdf8;
+  border-right: 1px dashed #38bdf8;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.brushPopover {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--bg-surface);
+  border: 1px solid var(--bg-border);
+  border-radius: var(--radius-card);
+  padding: var(--space-3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 20;
+  min-width: 200px;
+}
+
+.brushPopoverHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--space-2);
+}
+
+.brushPopoverClose {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  font-size: 14px;
+}
+
+.brushPopoverClose:hover {
+  color: var(--text-primary);
+}
+
+.brushPopoverContent {
+  font-size: var(--font-size-sm);
+}
+
+.brushPopoverRow {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--space-1) 0;
+  color: var(--text-secondary);
+}
+
+.brushPopoverRow span:last-child {
+  font-family: var(--font-data);
+  color: var(--text-primary);
+}
+
+.brushApplyBtn {
+  width: 100%;
+  margin-top: var(--space-3);
+  padding: var(--space-2);
+  background: var(--color-accent);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: white;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.brushApplyBtn:hover {
+  background: var(--color-accent-hover);
+}

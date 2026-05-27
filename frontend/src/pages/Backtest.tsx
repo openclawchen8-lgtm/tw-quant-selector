@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { createChart, ColorType, LineSeries, AreaSeries, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
 import { fetchBacktestEquity, type EquityPoint } from '../api/client';
 import { formatNumber } from '../utils/format';
@@ -28,6 +29,7 @@ interface BacktestRun {
 import SkeletonLoader from '../components/SkeletonLoader';
 
 export default function Backtest() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [startDate, setStartDate] = useState('2024-01-01');
   const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10));
   const [weights, setWeights] = useState({ momentum: 30, value: 25, quality: 25, growth: 20 });
@@ -218,7 +220,7 @@ export default function Backtest() {
                 <h3 id="equity-label">累積淨值 <span className={styles.legend}><span style={{color:'var(--color-bull)'}}>● 策略</span> <span style={{color:'var(--text-muted)'}}>○ 0050</span></span></h3>
                 <div style={{ position: 'relative' }}>
                   {chartLoading ? <SkeletonLoader variant="chart" height={250} children={<></>} /> : (
-                    equityData.length === 0 ? <div style={{ height: 250, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>尚無淨值資料</div> : <BacktestChart data={equityData} height={250} />
+                    equityData.length === 0 ? <div style={{ height: 250, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>尚無淨值資料</div> : <BacktestChart data={equityData} height={250} searchParams={searchParams} setSearchParams={setSearchParams} />
                   )}
                 </div>
               </div>
@@ -253,12 +255,30 @@ export default function Backtest() {
   );
 }
 
-function BacktestChart({ data, height }: { data: EquityPoint[]; height: number }) {
+function BacktestChart({ 
+  data, 
+  height, 
+  onBrushSelect,
+  searchParams,
+  setSearchParams
+}: { 
+  data: EquityPoint[]; 
+  height: number; 
+  onBrushSelect?: (start: string, end: string) => void;
+  searchParams: URLSearchParams;
+  setSearchParams: (params: URLSearchParams) => void;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const strategySeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const benchmarkSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  
+  // T051: Brush 選取狀態
+  const [brushSelection, setBrushSelection] = useState<{ start: number; end: number } | null>(null);
+  const [brushPopover, setBrushPopover] = useState<{ start: string; end: string; startValue: number; endValue: number; return: number } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState<number | null>(null);
 
   // T051: 重設縮放函式
   const resetZoom = useCallback(() => {
@@ -535,6 +555,28 @@ function BacktestChart({ data, height }: { data: EquityPoint[]; height: number }
     // 初始 fit
     chart.timeScale().fitContent();
 
+    // T051: URL 狀態同步 - 讀取 URL 參數並套用
+    const urlFrom = searchParams.get('from');
+    const urlTo = searchParams.get('to');
+    if (urlFrom && urlTo) {
+      chart.timeScale().setVisibleRange({ from: urlFrom as Time, to: urlTo as Time });
+    }
+
+    // T051: URL 狀態同步 - 監聽縮放變化並更新 URL
+    const syncToUrl = () => {
+      const range = chart.timeScale().getVisibleRange();
+      if (range) {
+        const newParams = new URLSearchParams(searchParams);
+        const fromStr = typeof range.from === 'string' ? range.from : new Date((range.from as number) * 1000).toISOString().slice(0, 10);
+        const toStr = typeof range.to === 'string' ? range.to : new Date((range.to as number) * 1000).toISOString().slice(0, 10);
+        newParams.set('from', fromStr);
+        newParams.set('to', toStr);
+        setSearchParams(newParams);
+      }
+    };
+
+    chart.timeScale().subscribeVisibleTimeRangeChange(syncToUrl);
+
     const handleResize = () => {
       if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth });
     };
@@ -543,6 +585,7 @@ function BacktestChart({ data, height }: { data: EquityPoint[]; height: number }
     return () => {
       window.removeEventListener('resize', handleResize);
       chart.timeScale().unsubscribeVisibleTimeRangeChange(enforceMinRange);
+      chart.timeScale().unsubscribeVisibleTimeRangeChange(syncToUrl);
       if (containerRef.current) {
         containerRef.current.removeEventListener('wheel', handleWheel);
       }
@@ -551,10 +594,89 @@ function BacktestChart({ data, height }: { data: EquityPoint[]; height: number }
       }
       chart.remove();
     };
-  }, [data, height]);
+  }, [data, height, searchParams, setSearchParams]);
+
+  // T051: Brush 選取處理
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    setIsDragging(true);
+    setDragStart(x);
+    setBrushSelection(null);
+    setBrushPopover(null);
+  }, []);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!isDragging || !containerRef.current || dragStart === null) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const start = Math.min(dragStart, x);
+    const end = Math.max(dragStart, x);
+    setBrushSelection({ start, end });
+  }, [isDragging, dragStart]);
+
+  const handleMouseUp = useCallback(() => {
+    if (!isDragging || !brushSelection || !containerRef.current || !chartRef.current) {
+      setIsDragging(false);
+      setDragStart(null);
+      return;
+    }
+
+    const range = chartRef.current.timeScale().getVisibleRange();
+    if (!range) {
+      setIsDragging(false);
+      setDragStart(null);
+      return;
+    }
+
+    const rect = containerRef.current.getBoundingClientRect();
+    const fromMs = typeof range.from === 'string'
+      ? new Date(range.from + 'T00:00:00Z').getTime()
+      : (range.from as number) * 1000;
+    const toMs = typeof range.to === 'string'
+      ? new Date(range.to + 'T00:00:00Z').getTime()
+      : (range.to as number) * 1000;
+
+    // 計算選取的時間範圍
+    const startTimeMs = fromMs + (brushSelection.start / rect.width) * (toMs - fromMs);
+    const endTimeMs = fromMs + (brushSelection.end / rect.width) * (toMs - fromMs);
+
+    const msToTime = (ms: number): string => {
+      const d = new Date(ms);
+      return d.toISOString().slice(0, 10);
+    };
+
+    const startDate = msToTime(startTimeMs);
+    const endDate = msToTime(endTimeMs);
+
+    // 找到對應的資料點
+    const startPoint = data.find(p => p.date === startDate);
+    const endPoint = data.find(p => p.date === endDate);
+
+    if (startPoint && endPoint) {
+      const returnVal = ((endPoint.value - startPoint.value) / startPoint.value) * 100;
+      setBrushPopover({
+        start: startDate,
+        end: endDate,
+        startValue: startPoint.value,
+        endValue: endPoint.value,
+        return: returnVal,
+      });
+    }
+
+    setIsDragging(false);
+    setDragStart(null);
+  }, [isDragging, brushSelection, data]);
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div 
+      style={{ position: 'relative' }}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+    >
       <div ref={containerRef} />
       {/* T051: 重設縮放按鈕 */}
       <button
@@ -565,6 +687,52 @@ function BacktestChart({ data, height }: { data: EquityPoint[]; height: number }
       >
         ⟲
       </button>
+      {/* T051: Brush 選取框 */}
+      {brushSelection && (
+        <div
+          className={styles.brushSelection}
+          style={{
+            left: brushSelection.start,
+            width: brushSelection.end - brushSelection.start,
+          }}
+        />
+      )}
+      {/* T051: Brush Popover */}
+      {brushPopover && (
+        <div className={styles.brushPopover}>
+          <div className={styles.brushPopoverHeader}>
+            選取期間
+            <button 
+              className={styles.brushPopoverClose}
+              onClick={() => setBrushPopover(null)}
+            >✕</button>
+          </div>
+          <div className={styles.brushPopoverContent}>
+            <div className={styles.brushPopoverRow}>
+              <span>期間</span>
+              <span>{brushPopover.start} ~ {brushPopover.end}</span>
+            </div>
+            <div className={styles.brushPopoverRow}>
+              <span>期間報酬</span>
+              <span style={{ color: brushPopover.return > 0 ? 'var(--color-bull-text)' : 'var(--color-bear-text)' }}>
+                {formatNumber(brushPopover.return / 100, { type: 'percent' })}
+              </span>
+            </div>
+            {onBrushSelect && (
+              <button
+                className={styles.brushApplyBtn}
+                onClick={() => {
+                  onBrushSelect(brushPopover.start, brushPopover.end);
+                  setBrushPopover(null);
+                  setBrushSelection(null);
+                }}
+              >
+                設為回測期間
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
