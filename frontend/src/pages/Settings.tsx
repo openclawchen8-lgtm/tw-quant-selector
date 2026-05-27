@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { DesktopOnly, MobileMessage } from '../utils/responsive';
+import SkeletonScreen from '../components/SkeletonScreen';
 import styles from './Settings.module.css';
 
 const API = 'http://localhost:8000';
@@ -98,20 +99,19 @@ export default function Settings() {
     }
   };
 
-  if (loading) return <div className={styles.page}><p>載入中...</p></div>;
-
   const getS = (key: string) => settings.find(s => s.key === key);
 
   return (
     <div className={styles.page}>
+      <SkeletonScreen loading={loading} variant="card" rows={4} width="100%" height={600}>
       <DesktopOnly>
         <div className={styles.header}>
           <h1 className={styles.title}>系統設定 Settings</h1>
           <div className={styles.actions}>
-            <button className={styles.testBtn} onClick={handleTestAlert} disabled={testing}>
+            <button className={`${styles.testBtn}${testing ? ' btn-loading' : ''}`} onClick={handleTestAlert} disabled={testing}>
               {testing ? '發送中...' : '🔔 測試告警'}
             </button>
-            <button className={styles.saveBtn} onClick={handleSave} disabled={saving}>
+            <button className={`${styles.saveBtn}${saving ? ' btn-loading' : ''}`} onClick={handleSave} disabled={saving}>
               {saving ? '儲存中...' : '💾 儲存設定'}
             </button>
           </div>
@@ -198,6 +198,7 @@ export default function Settings() {
           </div>
         </div>
       </DesktopOnly>
+      </SkeletonScreen>
       <MobileMessage message="請在桌面環境進行系統設定" />
     </div>
   );

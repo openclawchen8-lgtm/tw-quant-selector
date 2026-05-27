@@ -3,6 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { fetchLatestSignals } from '../api/client';
 import FactorMiniBar from '../components/FactorMiniBar';
 import ExportModal from '../components/ExportModal';
+import SkeletonScreen from '../components/SkeletonScreen';
+import EmptyState from '../components/EmptyState';
 import styles from './Signals.module.css';
 
 interface SignalItem {
@@ -162,37 +164,15 @@ export default function Signals() {
         </div>
       </div>
 
-      {loading ? (
-        <div className={styles.tableSkeleton}>
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className={styles.skelRow}>
-              <div className={styles.skelCell} style={{ width: 40 }} />
-              <div className={styles.skelCell} style={{ width: 40 }} />
-              <div className={styles.skelCell} style={{ width: 140 }} />
-              <div className={styles.skelCell} style={{ width: 70 }} />
-              <div className={styles.skelCell} style={{ width: 60 }} />
-              <div className={styles.skelCell} style={{ width: 80 }} />
-              <div className={styles.skelCell} style={{ width: 80 }} />
-              <div className={styles.skelCell} style={{ width: 80 }} />
-              <div className={styles.skelCell} style={{ width: 80 }} />
-              <div className={styles.skelCell} style={{ width: 60 }} />
-            </div>
-          ))}
-        </div>
-      ) : error ? (
-        <div className={styles.tableWrapper}>
-          <div className={styles.emptyState}>
-            <p><strong>⚠ {strategyLabel(strategy)}</strong> 尚無資料</p>
-            <p className={styles.emptyHint}>此策略的選股結果尚未產出，請先執行排程器或切換至「全部策略」。</p>
-          </div>
-        </div>
+      <SkeletonScreen loading={loading} variant="table" rows={5} width="100%" height={320}>
+      {error ? (
+        <EmptyState scenario="failed" onRetry={() => window.location.reload()}>
+          <strong>{strategyLabel(strategy)}</strong> 尚無資料 — 請執行排程器或切換策略
+        </EmptyState>
       ) : !sorted.length ? (
-        <div className={styles.tableWrapper}>
-          <div className={styles.emptyState}>
-            <p>今日沒有符合條件的選股結果</p>
-            <p className={styles.emptyHint}>可能原因：市場休市、資料尚未更新、或篩選條件過嚴</p>
-          </div>
-        </div>
+        <EmptyState scenario="filter">
+          今日沒有符合條件的選股結果
+        </EmptyState>
       ) : (
         <div className={styles.tableWrapper}>
           <table className={`${styles.table} ${dense ? styles.dense : ''}`} ref={tableRef}>
@@ -258,6 +238,7 @@ export default function Signals() {
           </table>
         </div>
       )}
+      </SkeletonScreen>
       {showExport && (
         <ExportModal
           defaultColumns={[

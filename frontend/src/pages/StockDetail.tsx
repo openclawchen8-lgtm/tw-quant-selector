@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { fetchStockDetail } from '../api/client';
 import FactorMiniBar from '../components/FactorMiniBar';
 import SkeletonLoader from '../components/SkeletonLoader';
+import EmptyState from '../components/EmptyState';
 import styles from './StockDetail.module.css';
 
 interface StockInfo {
@@ -33,7 +34,7 @@ export default function StockDetail() {
   }
 
   if (!data) {
-    return <div className={styles.page}><p style={{ color: 'var(--text-muted)' }}>查無此股票</p></div>;
+    return <div className={styles.page}><EmptyState scenario="notrade">查無此股票資料</EmptyState></div>;
   }
 
   const { info, prices, valuations, financials, revenue } = data;

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import EmptyState from '../components/EmptyState';
 import styles from './Portfolio.module.css';
 
 const API = 'http://localhost:8000';
@@ -221,7 +222,7 @@ export default function Portfolio() {
         <input className={styles.input} type="number" placeholder="股數" value={shares} onChange={(e) => setShares(e.target.value)} />
         <input className={styles.input} type="number" placeholder="每股成本" value={cost} onChange={(e) => setCost(e.target.value)} />
         <input className={styles.input} type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-        <button className={styles.addBtn} onClick={addLot} disabled={adding}>加入</button>
+        <button className={`${styles.addBtn}${adding ? ' btn-loading' : ''}`} onClick={addLot} disabled={adding}>加入</button>
       </div>
 
       {/* Summary */}
@@ -258,7 +259,7 @@ export default function Portfolio() {
           </thead>
           <tbody>
             {holdings.length === 0 ? (
-              <tr><td colSpan={11} className={styles.emptyCell}>尚無持股，上方輸入股號加入</td></tr>
+              <tr><td colSpan={11} className={styles.emptyCell}><EmptyState scenario="initial">尚無持股，上方輸入股號加入</EmptyState></td></tr>
             ) : (
               holdings.map((h) => {
                 const curPrice = h.current_price ?? h.avgCost;

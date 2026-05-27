@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { fetchLatestSignals } from '../api/client';
 import StatCard from '../components/StatCard';
 import FactorMiniBar from '../components/FactorMiniBar';
+import SkeletonScreen from '../components/SkeletonScreen';
+import EmptyState from '../components/EmptyState';
 import styles from './Dashboard.module.css';
 
 interface SignalItem {
@@ -96,7 +98,7 @@ export default function Dashboard() {
         <span className={styles.headerDate}>
           {today.toISOString().slice(0, 10)}（{weekday}）台股收盤
         </span>
-        <button className={styles.refreshBtn} onClick={load} disabled={loading}>
+        <button className={`${styles.refreshBtn}${loading ? ' btn-loading' : ''}`} onClick={load} disabled={loading}>
           {loading ? '⋯' : '↻ 重新整理'}
         </button>
       </div>
@@ -147,32 +149,11 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {loading ? (
-        <div className={styles.tableSkeleton}>
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className={styles.skelRow}>
-              <div className={styles.skelCell} style={{ width: 40 }} />
-              <div className={styles.skelCell} style={{ width: 140 }} />
-              <div className={styles.skelCell} style={{ width: 70 }} />
-              <div className={styles.skelCell} style={{ width: 60 }} />
-              <div className={styles.skelCell} style={{ width: 80 }} />
-              <div className={styles.skelCell} style={{ width: 80 }} />
-              <div className={styles.skelCell} style={{ width: 80 }} />
-              <div className={styles.skelCell} style={{ width: 80 }} />
-              <div className={styles.skelCell} style={{ width: 60 }} />
-            </div>
-          ))}
-        </div>
-      ) : allItems.length === 0 ? (
-        <div className={styles.emptyState}>
+      <SkeletonScreen loading={loading} variant="table" rows={5} width="100%" height={320}>
+      {allItems.length === 0 ? (
+        <EmptyState scenario="notrade" onRetry={() => navigate('/monitor')}>
           今日沒有符合條件的選股結果
-          <div className={styles.emptyReasons}>
-            可能原因：市場休市、資料尚未更新、篩選條件過嚴
-          </div>
-          <button className={styles.actionBtn} onClick={() => navigate('/monitor')}>
-            查看資料監控
-          </button>
-        </div>
+        </EmptyState>
       ) : (
         <div className={styles.tableWrapper}>
           <table className={styles.table} role="grid" aria-label="最新選股訊號表格" ref={tableRef}>
@@ -221,6 +202,7 @@ export default function Dashboard() {
           </table>
         </div>
       )}
+      </SkeletonScreen>
 
       {/* Factor contribution & weekly changes */}
       <div className={styles.bottomGrid}>
