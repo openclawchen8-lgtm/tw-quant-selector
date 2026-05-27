@@ -72,6 +72,19 @@ class BacktestResponse(BaseModel):
     status: str
 
 
+class PortfolioAlertRequest(BaseModel):
+    stock_id: str
+    stock_name: str = ""
+    pnl: float = 0
+    pnl_pct: float = 0
+    threshold_type: str = "percent"
+    threshold_value: float = 0
+    avg_cost: float = 0
+    current_price: float = 0
+    shares: int = 0
+    alert_enabled: bool = True
+
+
 class DataStatusResponse(BaseModel):
     last_price_update: Optional[str] = None
     missing_dates: list[str] = []
@@ -149,6 +162,14 @@ def test_alert():
         return api_response({"status": "sent"})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/portfolio/alert")
+def portfolio_alert(req: PortfolioAlertRequest):
+    from tw_quant_selector.monitoring.alerting import AlertManager
+    manager = AlertManager(db)
+    result = manager.handle_pl_alert(req.model_dump())
+    return api_response(result)
 
 
 @app.get("/api/v1/settings/db-path")

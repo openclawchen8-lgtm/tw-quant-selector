@@ -128,6 +128,21 @@ CREATE TABLE IF NOT EXISTS ingestion_tracker (
     error_msg       VARCHAR,
     PRIMARY KEY (stock_id, dataset)
 );
+
+CREATE TABLE IF NOT EXISTS alert_log (
+    log_id          VARCHAR PRIMARY KEY,
+    stock_id        VARCHAR NOT NULL,
+    triggered_at    TIMESTAMP DEFAULT now(),
+    pnl             DECIMAL(18,2),
+    pnl_pct         DECIMAL(8,4),
+    threshold_type  VARCHAR,
+    threshold_value DECIMAL(18,2),
+    avg_cost        DECIMAL(18,2),
+    current_price   DECIMAL(10,2),
+    shares          INTEGER,
+    sent            BOOLEAN,
+    reason          VARCHAR
+);
 """
 
 

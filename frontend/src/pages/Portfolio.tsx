@@ -28,7 +28,19 @@ interface AggregatedHolding {
   name: string;
 }
 
+interface StockAlertConfig {
+  pl_threshold?: number;
+  pl_percent_threshold?: number;
+  alert_enabled: boolean;
+}
+
+interface GlobalThresholds {
+  pl_threshold: number | null;
+  pl_percent_threshold: number | null;
+}
+
 const STORAGE_KEY = 'tw_quant_lots';
+const ALERT_CONFIG_KEY = 'tw_quant_alert_configs';
 
 function loadLots(): Lot[] {
   try {
@@ -54,7 +66,6 @@ function loadLots(): Lot[] {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const lots: Lot[] = JSON.parse(raw);
-      // Ensure each lot has a date
       const fixed = lots.map((l) => ({ ...l, date: l.date || new Date().toISOString().split('T')[0] }));
       if (fixed.some((l, i) => l !== lots[i])) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(fixed));
@@ -63,6 +74,12 @@ function loadLots(): Lot[] {
     }
     return [];
   } catch { return []; }
+}
+
+function loadAlertConfigs(): Record<string, StockAlertConfig> {
+  try {
+    return JSON.parse(localStorage.getItem(ALERT_CONFIG_KEY) || '{}');
+  } catch { return {}; }
 }
 
 export default function Portfolio() {
@@ -79,6 +96,28 @@ export default function Portfolio() {
   const [adding, setAdding] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [prices, setPrices] = useState<Record<string, { name: string; close: number | null }>>({});
+
+  // ── Alert / Threshold states ──
+  const [alertConfigs, setAlertConfigs] = useState<Record<string, StockAlertConfig>>(loadAlertConfigs);
+  const [globalThresholds, setGlobalThresholds] = useState<GlobalThresholds>({ pl_threshold: null, pl_percent_threshold: null });
+  const [configuringStock, setConfiguringStock] = useState<string | null>(null);
+
+  // Load global thresholds from backend
+  useEffect(() => {
+    apiFetch<{ key: string; value: string | null }[]>('/api/v1/settings/alerts').then(data => {
+      const pl = data.find(s => s.key === 'PL_THRESHOLD');
+      const pct = data.find(s => s.key === 'PL_PERCENT_THRESHOLD');
+      setGlobalThresholds({
+        pl_threshold: pl?.value ? Number(pl.value) : null,
+        pl_percent_threshold: pct?.value ? Number(pct.value) : null,
+      });
+    }).catch(() => {});
+  }, []);
+
+  // Persist per-stock configs
+  useEffect(() => {
+    localStorage.setItem(ALERT_CONFIG_KEY, JSON.stringify(alertConfigs));
+  }, [alertConfigs]);
 
   const refreshPrices = useCallback(async () => {
     const ids = [...new Set(lots.map((l) => l.stock_id))].join(',');
@@ -134,6 +173,44 @@ export default function Portfolio() {
 
   const toggleExpand = (sid: string) => setExpanded(expanded === sid ? null : sid);
 
+  // ── Alert helpers ──
+  const getEffectiveThreshold = (stockId: string, type: 'pl' | 'pct'): number | null => {
+    const perStock = alertConfigs[stockId];
+    if (type === 'pl') {
+      if (perStock?.pl_threshold != null) return perStock.pl_threshold;
+      return globalThresholds.pl_threshold;
+    }
+    if (perStock?.pl_percent_threshold != null) return perStock.pl_percent_threshold;
+    return globalThresholds.pl_percent_threshold;
+  };
+
+  const getBreachStatus = (stockId: string, pnl: number, pnlPct: number): { breached: boolean; type: 'pl' | 'pct' | null; value: number | null } => {
+    const plT = getEffectiveThreshold(stockId, 'pl');
+    const pctT = getEffectiveThreshold(stockId, 'pct');
+    if (plT != null && Math.abs(pnl) >= plT) return { breached: true, type: 'pl', value: plT };
+    if (pctT != null && Math.abs(pnlPct * 100) >= pctT) return { breached: true, type: 'pct', value: pctT };
+    return { breached: false, type: null, value: null };
+  };
+
+  const hasAnyThreshold = (stockId: string): boolean => {
+    return getEffectiveThreshold(stockId, 'pl') != null || getEffectiveThreshold(stockId, 'pct') != null;
+  };
+
+  const updateConfig = (stockId: string, updates: Partial<StockAlertConfig>) => {
+    setAlertConfigs(prev => ({
+      ...prev,
+      [stockId]: { alert_enabled: true, ...prev[stockId], ...updates }
+    }));
+  };
+
+  const clearConfig = (stockId: string) => {
+    setAlertConfigs(prev => {
+      const next = { ...prev };
+      delete next[stockId];
+      return next;
+    });
+  };
+
   return (
     <div className={styles.page}>
       <h1 className={styles.title}>投組追蹤 Portfolio</h1>
@@ -176,7 +253,7 @@ export default function Portfolio() {
             <tr>
               <th>股號</th><th>名稱</th><th data-type="number">合計股數</th><th data-type="number">均價</th>
               <th data-type="number">現價</th><th data-type="number">損益</th><th data-type="number">損益%</th>
-              <th data-type="number">權重</th><th>日期</th><th></th>
+              <th data-type="number">警示</th><th data-type="number">權重</th><th>日期</th><th>操作</th>
             </tr>
           </thead>
           <tbody>
@@ -189,6 +266,9 @@ export default function Portfolio() {
                 const pnlPct = (curPrice - h.avgCost) / h.avgCost;
                 const weight = totalCost > 0 ? (h.avgCost * h.totalShares) / totalCost : 0;
                 const isOpen = expanded === h.stock_id;
+                const isConfigOpen = configuringStock === h.stock_id;
+                const breach = getBreachStatus(h.stock_id, pnl, pnlPct);
+
                 return (
                   <tr key={h.stock_id} className={styles.dataRow}>
                     <td className={styles.stockLink} onClick={() => navigate(`/signals/${h.stock_id}`)}>{h.stock_id}</td>
@@ -202,6 +282,28 @@ export default function Portfolio() {
                     </td>
                     <td data-type="number" className={pnl >= 0 ? styles.bullText : styles.bearText}>
                       {pnl >= 0 ? '+' : ''}{(pnlPct * 100).toFixed(2)}%
+                    </td>
+                    {/* Alert status column */}
+                    <td data-type="number">
+                      {hasAnyThreshold(h.stock_id) ? (
+                        <button
+                          className={`${styles.alertBtn} ${breach.breached ? styles.alertBreached : styles.alertOk}`}
+                          onClick={() => setConfiguringStock(isConfigOpen ? null : h.stock_id)}
+                          title={breach.breached
+                            ? `超標！${breach.type === 'pl' ? '金額' : '百分比'}門檻 ${breach.value}`
+                            : '點擊設定門檻'}
+                        >
+                          {breach.breached ? '⚠' : '✔'}
+                        </button>
+                      ) : (
+                        <button
+                          className={styles.alertNone}
+                          onClick={() => setConfiguringStock(isConfigOpen ? null : h.stock_id)}
+                          title="點擊設定門檻"
+                        >
+                          —
+                        </button>
+                      )}
                     </td>
                     <td data-type="number">{(weight * 100).toFixed(1)}%</td>
                     <td>{h.lots[0]?.date || ''}</td>
@@ -217,6 +319,82 @@ export default function Portfolio() {
           </tbody>
         </table>
       </div>
+
+      {/* ── Config sub-rows (inside tbody, after the table) ── */}
+      {configuringStock && groups[configuringStock] && (
+        <div className={styles.configPanel}>
+          <div className={styles.configHeader}>
+            <span className={styles.configTitle}>⚙ 門檻設定 — {configuringStock} {prices[configuringStock]?.name ?? ''}</span>
+            <button className={styles.configCloseBtn} onClick={() => setConfiguringStock(null)}>✕</button>
+          </div>
+          <div className={styles.configBody}>
+            {/* Amount threshold */}
+            <div className={styles.configField}>
+              <label className={styles.configLabel} htmlFor={`pl-amt-${configuringStock}`}>金額門檻 (±TWD)</label>
+              <input
+                id={`pl-amt-${configuringStock}`}
+                className={styles.configInput}
+                type="number"
+                placeholder={globalThresholds.pl_threshold != null ? `全域 ${globalThresholds.pl_threshold}` : '未設定'}
+                value={alertConfigs[configuringStock]?.pl_threshold ?? ''}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  updateConfig(configuringStock, { pl_threshold: v ? Number(v) : undefined });
+                }}
+              />
+              {alertConfigs[configuringStock]?.pl_threshold == null && globalThresholds.pl_threshold != null && (
+                <span className={styles.configHint}>套用全域: ±{globalThresholds.pl_threshold}</span>
+              )}
+            </div>
+
+            {/* Percent threshold */}
+            <div className={styles.configField}>
+              <label className={styles.configLabel} htmlFor={`pl-pct-${configuringStock}`}>百分比門檻 (±%)</label>
+              <input
+                id={`pl-pct-${configuringStock}`}
+                className={styles.configInput}
+                type="number"
+                step="0.1"
+                placeholder={globalThresholds.pl_percent_threshold != null ? `全域 ${globalThresholds.pl_percent_threshold}` : '未設定'}
+                value={alertConfigs[configuringStock]?.pl_percent_threshold ?? ''}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  updateConfig(configuringStock, { pl_percent_threshold: v ? Number(v) : undefined });
+                }}
+              />
+              {alertConfigs[configuringStock]?.pl_percent_threshold == null && globalThresholds.pl_percent_threshold != null && (
+                <span className={styles.configHint}>套用全域: ±{globalThresholds.pl_percent_threshold}%</span>
+              )}
+            </div>
+
+            {/* Alert enabled toggle */}
+            <div className={styles.configToggleRow}>
+              <label className={styles.configToggleLabel} htmlFor={`alert-enable-${configuringStock}`}>
+                <input
+                  id={`alert-enable-${configuringStock}`}
+                  type="checkbox"
+                  checked={alertConfigs[configuringStock]?.alert_enabled ?? true}
+                  onChange={(e) => updateConfig(configuringStock, { alert_enabled: e.target.checked })}
+                  className={styles.configCheckbox}
+                />
+                <span className={styles.configToggleText}>啟用通知 (Telegram / Email)</span>
+              </label>
+            </div>
+
+            {/* Clear button */}
+            <div className={styles.configActions}>
+              {alertConfigs[configuringStock] && (
+                <button
+                  className={styles.configClearBtn}
+                  onClick={() => { clearConfig(configuringStock); setConfiguringStock(null); }}
+                >
+                  清除個股設定，回退至全域
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Expanded detail: per-lot breakdown */}
       {expanded && groups[expanded] && (

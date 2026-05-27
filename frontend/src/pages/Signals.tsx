@@ -10,29 +10,51 @@ interface SignalItem {
   name?: string;
   score: number;
   rank: number;
+  rank_change?: number | null;
+  consecutive_days?: number | null;
+  factor_scores?: Record<string, number> | null;
 }
+
+const FACTOR_KEYS = ['momentum', 'value', 'quality', 'growth'];
 
 export default function Signals() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState<{ date: string; stocks: SignalItem[]; etfs: SignalItem[] } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState(searchParams.get('sort') || 'score');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [showEtf, setShowEtf] = useState(true);
   const [dense, setDense] = useState(false);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [focusedIndex, setFocusedIndex] = useState(-1);
+  const [strategy, setStrategy] = useState(searchParams.get('strategy') || 'composite');
   const tableRef = useRef<HTMLTableElement>(null);
 
   useEffect(() => {
-    fetchLatestSignals(true).then((d: any) => { setData(d); setLoading(false); }).catch(() => setLoading(false));
-  }, []);
+    setLoading(true);
+    setError(null);
+    fetchLatestSignals(strategy, true)
+      .then((d: any) => { setData(d); setLoading(false); })
+      .catch((e: Error) => { setData(null); setError(e.message); setLoading(false); });
+  }, [strategy]);
+
+  useEffect(() => {
+    setSearchParams({ sort: sortKey, dir: sortDir, strategy }, { replace: true });
+  }, [sortKey, sortDir, strategy]);
 
   const allItems = [...(data?.stocks || []), ...(showEtf ? data?.etfs || [] : [])];
   const sorted = [...allItems].sort((a, b) => {
     const m = sortDir === 'asc' ? 1 : -1;
     if (sortKey === 'rank') return (a.rank - b.rank) * m;
+    if (sortKey === 'rank_change') return ((a.rank_change ?? 0) - (b.rank_change ?? 0)) * m;
+    if (FACTOR_KEYS.includes(sortKey)) {
+      const af = a.factor_scores?.[sortKey] ?? 0;
+      const bf = b.factor_scores?.[sortKey] ?? 0;
+      return (af - bf) * m;
+    }
+    if (sortKey === 'stock_id') return (a.stock_id.localeCompare(b.stock_id)) * m;
     return (a.score - b.score) * m;
   });
 
@@ -100,11 +122,9 @@ export default function Signals() {
     if (sortKey === key) {
       const newDir = sortDir === 'desc' ? 'asc' : 'desc';
       setSortDir(newDir);
-      setSearchParams({ sort: key, dir: newDir });
     } else {
       setSortKey(key);
       setSortDir('desc');
-      setSearchParams({ sort: key, dir: 'desc' });
     }
   };
 
@@ -113,15 +133,20 @@ export default function Signals() {
     return sortDir === 'asc' ? '▲' : '▼';
   };
 
+  const strategyLabel = (s: string) => {
+    const map: Record<string, string> = { composite: '全部策略', momentum: '動能', value: '價值', quality: '品質', growth: '成長' };
+    return map[s] || s;
+  };
+
   return (
     <div className={styles.page}>
       <div className={styles.header}>
         <h1 className={styles.title}>選股訊號 Signals</h1>
         <div className={styles.headerMeta}>
-          <input type="date" value={today} className={styles.datePicker} />
-          <select className={styles.select}>
-            <option>全部策略</option>
-            <option>動能</option><option>價值</option><option>品質</option><option>成長</option>
+          <input type="date" value={today} className={styles.datePicker} readOnly />
+          <select className={styles.select} value={strategy} onChange={(e) => setStrategy(e.target.value)}>
+            <option value="composite">全部策略</option>
+            <option value="momentum">動能</option><option value="value">價值</option><option value="quality">品質</option><option value="growth">成長</option>
           </select>
           <label className={styles.toggle}>
             <input type="checkbox" checked={showEtf} onChange={() => setShowEtf((x) => !x)} />
@@ -154,6 +179,20 @@ export default function Signals() {
             </div>
           ))}
         </div>
+      ) : error ? (
+        <div className={styles.tableWrapper}>
+          <div className={styles.emptyState}>
+            <p><strong>⚠ {strategyLabel(strategy)}</strong> 尚無資料</p>
+            <p className={styles.emptyHint}>此策略的選股結果尚未產出，請先執行排程器或切換至「全部策略」。</p>
+          </div>
+        </div>
+      ) : !sorted.length ? (
+        <div className={styles.tableWrapper}>
+          <div className={styles.emptyState}>
+            <p>今日沒有符合條件的選股結果</p>
+            <p className={styles.emptyHint}>可能原因：市場休市、資料尚未更新、或篩選條件過嚴</p>
+          </div>
+        </div>
       ) : (
         <div className={styles.tableWrapper}>
           <table className={`${styles.table} ${dense ? styles.dense : ''}`} ref={tableRef}>
@@ -162,14 +201,26 @@ export default function Signals() {
                 <th style={{ width: 48 }} data-type="number" onClick={() => handleSort('rank')}>
                   排名 {sortIcon('rank')}
                 </th>
-                <th style={{ width: 48 }} data-type="number">變動</th>
-                <th style={{ width: 160 }}>股票</th>
+                <th style={{ width: 48 }} data-type="number" onClick={() => handleSort('rank_change')}>
+                  變動 {sortIcon('rank_change')}
+                </th>
+                <th style={{ width: 160 }} onClick={() => handleSort('stock_id')}>
+                  股票 {sortIcon('stock_id')}
+                </th>
                 <th style={{ width: 88 }} data-type="number">收盤價</th>
                 <th style={{ width: 80 }} data-type="number">漲跌</th>
-                <th style={{ width: 100 }} data-type="number">動能</th>
-                <th style={{ width: 100 }} data-type="number">價值</th>
-                <th style={{ width: 100 }} data-type="number">品質</th>
-                <th style={{ width: 100 }} data-type="number">成長</th>
+                <th style={{ width: 100 }} data-type="number" onClick={() => handleSort('momentum')}>
+                  動能 {sortIcon('momentum')}
+                </th>
+                <th style={{ width: 100 }} data-type="number" onClick={() => handleSort('value')}>
+                  價值 {sortIcon('value')}
+                </th>
+                <th style={{ width: 100 }} data-type="number" onClick={() => handleSort('quality')}>
+                  品質 {sortIcon('quality')}
+                </th>
+                <th style={{ width: 100 }} data-type="number" onClick={() => handleSort('growth')}>
+                  成長 {sortIcon('growth')}
+                </th>
                 <th style={{ width: 80 }} data-type="number" onClick={() => handleSort('score')}>
                   綜合 {sortIcon('score')}
                 </th>
@@ -233,8 +284,15 @@ function SignalRow({ item, index, navigate, expanded, onToggle, isFocused }: {
   item: SignalItem; index: number; navigate: (p: string) => void;
   expanded: boolean; onToggle: () => void; isFocused: boolean;
 }) {
-  const rankChange = index === 0 ? 2 : index === 1 ? -1 : index === 2 ? 0 : null;
-  const rankChangeStr = rankChange === null ? '' : rankChange > 0 ? `▲${rankChange}` : rankChange < 0 ? `▼${Math.abs(rankChange)}` : '—';
+  const rc = item.rank_change;
+  const rankChangeStr = rc == null ? '' : rc > 0 ? `▲${rc}` : rc < 0 ? `▼${Math.abs(rc)}` : '—';
+  const rcColor = rc != null && rc > 0 ? 'var(--color-bull-text)' : rc != null && rc < 0 ? 'var(--color-bear-text)' : 'var(--text-muted)';
+
+  const fs = item.factor_scores || {};
+  const momentum = fs.momentum ?? item.score;
+  const value = fs.value ?? (item.score * 0.8);
+  const quality = fs.quality ?? (item.score * 0.6);
+  const growth = fs.growth ?? (item.score * 0.4);
 
   return (
     <>
@@ -246,7 +304,7 @@ function SignalRow({ item, index, navigate, expanded, onToggle, isFocused }: {
         data-stock-id={item.stock_id}
       >
         <td data-type="number" className={styles.rankCell}>#{item.rank}</td>
-        <td data-type="number" style={{ color: rankChange && rankChange > 0 ? 'var(--color-bull-text)' : rankChange && rankChange < 0 ? 'var(--color-bear-text)' : 'var(--text-muted)' }}>
+        <td data-type="number" style={{ color: rcColor }}>
           {rankChangeStr}
         </td>
         <td>
@@ -256,12 +314,14 @@ function SignalRow({ item, index, navigate, expanded, onToggle, isFocused }: {
         </td>
         <td data-type="number" className="font-data">—</td>
         <td data-type="number" className="font-data" style={{ color: 'var(--color-bull-text)' }}>—</td>
-        <td data-type="number"><FactorMiniBar name="momentum" score={item.score} /></td>
-        <td data-type="number"><FactorMiniBar name="value" score={item.score * 0.8} /></td>
-        <td data-type="number"><FactorMiniBar name="quality" score={item.score * 0.6} /></td>
-        <td data-type="number"><FactorMiniBar name="growth" score={item.score * 0.4} /></td>
+        <td data-type="number"><FactorMiniBar name="momentum" score={momentum} /></td>
+        <td data-type="number"><FactorMiniBar name="value" score={value} /></td>
+        <td data-type="number"><FactorMiniBar name="quality" score={quality} /></td>
+        <td data-type="number"><FactorMiniBar name="growth" score={growth} /></td>
         <td data-type="number" className={`font-data ${styles.compositeScore}`}>{item.score.toFixed(2)}</td>
-        <td data-type="number" className="font-data" style={{ color: 'var(--text-muted)' }}>—</td>
+        <td data-type="number" className="font-data" style={{ color: 'var(--text-muted)' }}>
+          {item.consecutive_days != null ? item.consecutive_days : '—'}
+        </td>
         <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>○</td>
       </tr>
       {expanded && (

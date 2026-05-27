@@ -144,6 +144,135 @@
 .cashInput:focus { border-color: var(--color-accent); }
 
 /* Expand / detail */
+/* Alert status */
+.alertBtn {
+  background: none;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  padding: 2px 6px;
+  border-radius: var(--radius-tag);
+  transition: background 0.15s;
+  line-height: 1;
+}
+.alertBtn:hover { background: var(--bg-elevated); }
+.alertBreached { color: var(--color-neutral); }
+.alertOk { color: var(--color-bull-text); }
+.alertNone {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  padding: 2px 6px;
+  border-radius: var(--radius-tag);
+  transition: background 0.15s;
+}
+.alertNone:hover { background: var(--bg-elevated); color: var(--text-primary); }
+
+/* Config panel */
+.configPanel {
+  background: var(--bg-elevated);
+  border: 1px solid var(--bg-border);
+  border-radius: var(--radius-card);
+  margin-bottom: var(--space-4);
+  overflow: hidden;
+}
+.configHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--bg-border);
+}
+.configTitle {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.configCloseBtn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  padding: 2px 6px;
+  border-radius: var(--radius-tag);
+}
+.configCloseBtn:hover { color: var(--text-primary); background: var(--bg-overlay); }
+.configBody {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  align-items: flex-end;
+}
+.configField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 140px;
+}
+.configLabel {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.configInput {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--bg-border);
+  border-radius: var(--radius-btn);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: var(--font-data);
+  font-size: var(--font-size-sm);
+  outline: none;
+  width: 120px;
+}
+.configInput:focus { border-color: var(--color-accent); }
+.configInput::placeholder { color: var(--text-muted); font-size: var(--font-size-xs); }
+.configHint {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-style: italic;
+}
+.configToggleRow {
+  display: flex;
+  align-items: center;
+  min-width: 200px;
+  padding-top: var(--space-1);
+}
+.configToggleLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+.configCheckbox {
+  accent-color: var(--color-accent);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+.configToggleText { user-select: none; }
+.configActions {
+  width: 100%;
+  padding-top: var(--space-1);
+}
+.configClearBtn {
+  background: none;
+  border: 1px solid var(--color-bear-dim);
+  color: var(--color-bear-text);
+  border-radius: var(--radius-btn);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+  transition: background 0.15s;
+}
+.configClearBtn:hover { background: var(--color-bear-dim); }
+
 .expandBtn {
   background: none;
   border: none;

@@ -14,7 +14,7 @@ def test_init_db():
     expected = {
         "stocks", "daily_prices", "monthly_revenue", "financials",
         "valuations", "signals", "backtest_runs", "backtest_positions",
-        "backtest_equity", "alert_settings", "ingestion_tracker"
+        "backtest_equity", "alert_settings", "ingestion_tracker", "alert_log"
     }
     assert expected.issubset(table_names), f"Missing tables: {expected - table_names}"
     conn.close()
@@ -26,4 +26,4 @@ def test_init_db_idempotent():
     db.init_db()
     db.init_db()
     tables = db.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'main'").fetchall()
-    assert len(tables) == 11
+    assert len(tables) == 12

@@ -138,3 +138,17 @@
   50% { opacity: 0.8; }
   100% { opacity: 0.4; }
 }
+
+.emptyState {
+  text-align: center;
+  padding: var(--space-8) var(--space-4);
+  color: var(--text-secondary);
+  font-size: var(--font-size-md);
+}
+
+.emptyState p { margin: var(--space-2) 0; }
+
+.emptyHint {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}

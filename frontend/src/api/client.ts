@@ -20,8 +20,8 @@ export function fetchDashboard(): Promise<DashboardData> {
   return request<DashboardData>('/api/v1/dashboard');
 }
 
-export function fetchLatestSignals(includeEtf = true) {
-  return request(`/api/v1/signals/latest?include_etf=${includeEtf}`);
+export function fetchLatestSignals(strategy = 'composite', includeEtf = true) {
+  return request(`/api/v1/signals/latest?strategy=${encodeURIComponent(strategy)}&include_etf=${includeEtf}`);
 }
 
 export function fetchStockDetail(stockId: string) {
