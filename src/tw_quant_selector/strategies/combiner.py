@@ -109,7 +109,7 @@ def _save_signals(db, as_of_date, stock_scores, etf_scores, stock_ranked, etf_ra
                         break
 
                 if strategy != "composite":
-                    raw = (individual_scores or {}).get(sid, {}).get(strategy)
+                    raw = (individual_scores or {}).get(strategy, {}).get(sid)
                     score_val = round(Decimal(str(raw)), 4) if raw is not None and not (isinstance(raw, (float, np.floating)) and np.isnan(raw)) else None
                 else:
                     if score is None or (isinstance(score, (float, np.floating)) and (math.isnan(score) or np.isnan(score))):
