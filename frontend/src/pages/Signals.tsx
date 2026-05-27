@@ -5,7 +5,7 @@ import FactorMiniBar from '../components/FactorMiniBar';
 import ExportModal from '../components/ExportModal';
 import SkeletonScreen from '../components/SkeletonScreen';
 import EmptyState from '../components/EmptyState';
-import { formatNumber } from '../utils/format';
+import { formatNumber, colorize } from '../utils/format';
 import styles from './Signals.module.css';
 
 interface SignalItem {
@@ -265,7 +265,7 @@ function SignalRow({ item, navigate, expanded, onToggle, isFocused }: {
 }) {
   const rc = item.rank_change;
   const rankChangeStr = rc == null ? '' : rc > 0 ? `▲${rc}` : rc < 0 ? `▼${Math.abs(rc)}` : '—';
-  const rcColor = rc != null && rc > 0 ? 'var(--color-bull-text)' : rc != null && rc < 0 ? 'var(--color-bear-text)' : 'var(--text-muted)';
+  const rcColor = colorize(rc, 'score').className;
 
   const fs = item.factor_scores || {};
   const momentum = fs.momentum ?? item.score;
@@ -283,7 +283,7 @@ function SignalRow({ item, navigate, expanded, onToggle, isFocused }: {
         data-stock-id={item.stock_id}
       >
         <td data-type="number" className={styles.rankCell}>#{item.rank}</td>
-        <td data-type="number" style={{ color: rcColor }}>
+        <td data-type="number" className={rcColor}>
           {rankChangeStr}
         </td>
         <td>

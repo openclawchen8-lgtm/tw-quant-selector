@@ -5,7 +5,8 @@ import StatCard from '../components/StatCard';
 import FactorMiniBar from '../components/FactorMiniBar';
 import SkeletonScreen from '../components/SkeletonScreen';
 import EmptyState from '../components/EmptyState';
-import { formatNumber } from '../utils/format';
+import { formatNumber, colorize } from '../utils/format';
+import MarketStatus from '../components/MarketStatus';
 import styles from './Dashboard.module.css';
 
 interface SignalItem {
@@ -97,8 +98,9 @@ export default function Dashboard() {
       <div className={styles.header}>
         <h1 className={styles.title}>今日總覽 Dashboard</h1>
         <span className={styles.headerDate}>
-          {today.toISOString().slice(0, 10)}（{weekday}）台股收盤
+          {today.toISOString().slice(0, 10)}（{weekday}）
         </span>
+        <MarketStatus />
         <button className={`${styles.refreshBtn}${loading ? ' btn-loading' : ''}`} onClick={load} disabled={loading}>
           {loading ? '⋯' : '↻ 重新整理'}
         </button>

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { createChart, ColorType, LineSeries, AreaSeries, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
 import { fetchBacktestEquity, type EquityPoint } from '../api/client';
-import { formatNumber } from '../utils/format';
+import { formatNumber, colorize } from '../utils/format';
 import { DesktopOnly } from '../utils/responsive';
 import styles from './Backtest.module.css';
 
@@ -196,7 +196,7 @@ export default function Backtest() {
                       className={styles.historyCheckbox}
                     />
                     <span className={styles.historyDate}>{r.start_date || ''}</span>
-                    <span className="font-data" style={{ color: 'var(--color-bull-text)' }}>
+                    <span className={`font-data ${colorize(r.cagr, 'percent').className}`}>
                       {formatNumber(r.cagr, { type: 'percent' })}
                     </span>
                     <span className="font-data" style={{ color: 'var(--text-muted)' }}>

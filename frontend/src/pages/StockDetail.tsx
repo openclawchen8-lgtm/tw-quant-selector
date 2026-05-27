@@ -4,7 +4,7 @@ import { fetchStockDetail } from '../api/client';
 import FactorMiniBar from '../components/FactorMiniBar';
 import SkeletonLoader from '../components/SkeletonLoader';
 import EmptyState from '../components/EmptyState';
-import { formatNumber } from '../utils/format';
+import { formatNumber, colorize } from '../utils/format';
 import styles from './StockDetail.module.css';
 
 interface StockInfo {
@@ -149,7 +149,7 @@ export default function StockDetail() {
                   ) : revenue.slice(0, 12).map((r) => (
                     <tr key={r.ym}><td>{r.ym}</td>
                       <td className="font-data">{formatNumber(r.rev, { type: 'market_cap' })}</td>
-                      <td className="font-data" style={{ color: r.yoy != null && r.yoy > 0 ? 'var(--color-bull-text)' : r.yoy != null && r.yoy < 0 ? 'var(--color-bear-text)' : undefined }}>
+                      <td className={`font-data ${r.yoy != null ? colorize(r.yoy, 'percent').className : ''}`}>
                         {formatNumber(r.yoy, { type: 'percent' })}
                       </td>
                     </tr>

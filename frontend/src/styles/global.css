@@ -117,6 +117,16 @@ input, select, textarea { font-family: var(--font-ui); }
   transition: opacity var(--dur-fade);
 }
 
+/* ── colorize() output classes (from utils/format) ── */
+.text-positive { color: var(--color-positive); }
+.text-negative { color: var(--color-negative); }
+.text-neutral { color: var(--text-secondary); }
+.text-muted { color: var(--text-muted); }
+.text-excellent { color: var(--color-positive); font-weight: 600; }
+.text-good { color: var(--color-bull-text); }
+.text-poor { color: var(--color-negative-dim); }
+.text-warning { color: var(--color-warning, #f59e0b); }
+
 /* ── KPI value update flash ── */
 @keyframes valueFlash {
   0% { color: var(--color-accent); }
