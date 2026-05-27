@@ -3,9 +3,8 @@ from decimal import Decimal
 
 import numpy as np
 import pandas as pd
-from scipy.stats import zscore
 
-from tw_quant_selector.strategies.base import BaseStrategy, register_strategy
+from tw_quant_selector.strategies.base import BaseStrategy, register_strategy, safe_zscore
 
 
 @register_strategy
@@ -44,7 +43,7 @@ class GrowthStrategy(BaseStrategy):
             if len(rev) >= 2:
                 yoy_vals = rev["revenue_yoy"].dropna().tail(self.rev_months)
                 if not yoy_vals.empty:
-                    rev_score = zscore(yoy_vals.values)[-1] if len(yoy_vals) > 1 else float(yoy_vals.mean())
+                    rev_score = safe_zscore(yoy_vals.values)[-1] if len(yoy_vals) > 1 else float(yoy_vals.mean())
                     components.append(rev_score * self.rev_weight)
 
             if len(eps_rows) >= 2:
@@ -52,7 +51,7 @@ class GrowthStrategy(BaseStrategy):
                 eps_last = eps_rows["eps"].iloc[1]
                 if eps_q is not None and eps_last is not None and eps_last != 0:
                     eps_qoq = (float(eps_q) / float(eps_last)) - 1
-                    eps_score = zscore(np.array([eps_qoq]))[0]
+                    eps_score = safe_zscore(np.array([eps_qoq]))[0]
                     components.append(eps_score * self.eps_weight)
 
             if components:

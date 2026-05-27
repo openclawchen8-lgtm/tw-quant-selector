@@ -71,13 +71,12 @@ def _filter_static(db, as_of_date: date, stocks_df):
         if any(kw in name for kw in excluded_keywords):
             continue
         cap = row.get("market_cap")
-        if cap is None or (isinstance(cap, float) and (cap != cap)):
-            continue
-        try:
-            if cap < 3000000000:
+        if cap is not None and not (isinstance(cap, float) and (cap != cap)):
+            try:
+                if cap < 3000000000:
+                    continue
+            except TypeError:
                 continue
-        except TypeError:
-            continue
         candidates.append(sid)
     return [s for s in stocks_df.to_dict("records") if s["stock_id"] in set(candidates)]
 

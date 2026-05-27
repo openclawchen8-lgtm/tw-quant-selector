@@ -158,10 +158,11 @@ for k, v in metrics.items():
 run_scheduler() {
   header "執行排程器 (Ingest Next Bucket)"
   check_venv || return 1
-  "$PYTHON_BIN" -c "
-from tw_quant_selector.scheduler import run_daily_pipeline
-run_daily_pipeline()
-"
+  if [ -z "$FINMIND_TOKEN" ]; then
+    echo "❌ 需要設定 FINMIND_TOKEN 環境變數"
+    return 1
+  fi
+  "$PYTHON_BIN" "$PROJECT_DIR/scripts/run_daily_pipeline.py" "$@"
 }
 
 docker_build() {

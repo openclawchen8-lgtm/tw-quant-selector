@@ -2,9 +2,8 @@ from datetime import date, timedelta
 from math import log
 
 import numpy as np
-from scipy.stats import zscore
 
-from tw_quant_selector.strategies.base import BaseStrategy, register_strategy
+from tw_quant_selector.strategies.base import BaseStrategy, register_strategy, safe_zscore
 
 
 @register_strategy
@@ -36,11 +35,11 @@ class ValueStrategy(BaseStrategy):
             components = []
 
             if pb is not None and 0 < pb <= self.max_pb:
-                components.append(zscore(np.array([-log(float(pb))]))[0])
+                components.append(safe_zscore(np.array([-log(float(pb))]))[0])
             if pe is not None and pe > 0 and pe <= self.max_pe:
-                components.append(zscore(np.array([-log(float(pe))]))[0])
+                components.append(safe_zscore(np.array([-log(float(pe))]))[0])
             if div_yield is not None and div_yield >= self.min_yield:
-                components.append(zscore(np.array([float(div_yield)]))[0])
+                components.append(safe_zscore(np.array([float(div_yield)]))[0])
 
             if components:
                 scores[sid] = float(np.mean(components))

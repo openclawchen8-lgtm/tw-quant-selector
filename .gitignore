@@ -1,10 +1,52 @@
+# 環境變數
 .env
-.venv/
+.env.*
+
+# 資料庫
 *.duckdb
+*.duckdb.wal
+
+# Python
 __pycache__/
 *.pyc
-.output/
-dist/
+*.pyo
+.venv/
 *.egg-info/
+dist/
+build/
+
+# 測試與覆蓋率
 .pytest_cache/
-.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+
+# Node / Frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# 輸出目錄
+output/
+
+# 暫存
+*.tmp
+*.log
+.tmp/
+tmp/
+.cache/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 本機工具
+.qclaw/
+.openclaw/
+/agents/
+
+# Docker (本地建置用)
+docker-build-*

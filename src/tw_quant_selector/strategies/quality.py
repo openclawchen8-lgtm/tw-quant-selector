@@ -3,9 +3,8 @@ from decimal import Decimal
 
 import numpy as np
 import pandas as pd
-from scipy.stats import zscore
 
-from tw_quant_selector.strategies.base import BaseStrategy, register_strategy
+from tw_quant_selector.strategies.base import BaseStrategy, register_strategy, safe_zscore
 
 
 @register_strategy
@@ -40,14 +39,14 @@ class QualityStrategy(BaseStrategy):
             if roe_vals.empty:
                 continue
 
-            roe_score = zscore(roe_vals.values)[-1] if len(roe_vals) > 1 else 0.0
+            roe_score = safe_zscore(roe_vals.values)[-1] if len(roe_vals) > 1 else 0.0
 
             dte = rows["debt_to_equity"].iloc[0]
-            lev_score = zscore(np.array([-float(dte)]))[0] if dte is not None else 0.0
+            lev_score = safe_zscore(np.array([-float(dte)]))[0] if dte is not None else 0.0
 
             gm = rows["gross_margin"].dropna()
             gp_std = float(gm.std()) if len(gm) > 1 else 0
-            gp_stab = zscore(np.array([-gp_std]))[0]
+            gp_stab = safe_zscore(np.array([-gp_std]))[0]
 
             score = (roe_score * self.roe_weight
                      + lev_score * self.leverage_weight

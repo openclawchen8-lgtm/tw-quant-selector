@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS monthly_revenue (
     stock_id        VARCHAR NOT NULL,
     year_month      VARCHAR NOT NULL,
     revenue         BIGINT,
-    revenue_yoy     DECIMAL(8,4),
+    revenue_yoy     DECIMAL(12,4),
     announcement_date DATE,
     PRIMARY KEY (stock_id, year_month)
 );

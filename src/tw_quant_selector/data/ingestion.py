@@ -99,8 +99,10 @@ def _pivot_financials(rows: list[dict]) -> pd.DataFrame:
     pivoted.columns.name = None
     pivoted["year_quarter"] = pivoted["date"].apply(_date_to_year_quarter)
     pivoted["announcement_date"] = pivoted["date"].apply(_estimate_announcement_date)
-    pivoted["gross_margin"] = pivoted["gross_profit"] / pivoted["revenue"]
-    pivoted["operating_margin"] = pivoted["operating_income"] / pivoted["revenue"]
+    if "gross_profit" in pivoted.columns:
+        pivoted["gross_margin"] = pivoted["gross_profit"] / pivoted["revenue"]
+    if "operating_income" in pivoted.columns:
+        pivoted["operating_margin"] = pivoted["operating_income"] / pivoted["revenue"]
     return pivoted
 
 
@@ -199,14 +201,22 @@ def update_financials(db: Database, client: FinMindClient, stock_ids: list[str],
                 merged["liabilities"] = None
                 merged["total_assets"] = None
 
-            merged["roe"] = merged["net_income"] / merged["equity"]
-            merged["roa"] = merged["net_income"] / merged["total_assets"]
-            merged["debt_to_equity"] = merged["liabilities"] / merged["equity"]
+            for num, den, col in [
+                ("net_income", "equity", "roe"),
+                ("net_income", "total_assets", "roa"),
+                ("liabilities", "equity", "debt_to_equity"),
+            ]:
+                if den in merged.columns and merged[den].notna().any():
+                    merged[col] = merged[num] / merged[den].replace(0, pd.NA)
+                else:
+                    merged[col] = pd.NA
 
-            out_cols = ["stock_id", "year_quarter", "revenue", "gross_profit",
-                        "operating_income", "net_income", "eps", "roe", "roa",
-                        "gross_margin", "operating_margin", "debt_to_equity",
+            out_cols = ["stock_id", "year_quarter", "revenue", "net_income", "eps",
                         "announcement_date"]
+            for c in ["gross_profit", "operating_income", "roe", "roa",
+                       "gross_margin", "operating_margin", "debt_to_equity"]:
+                if c in merged.columns:
+                    out_cols.append(c)
             result = merged[out_cols].to_dict("records")
             total += _upsert(conn, "financials", result, ["stock_id", "year_quarter"])
     log.info("ingestion.financials", stocks=len(stock_ids), rows=total)

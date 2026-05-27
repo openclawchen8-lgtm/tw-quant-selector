@@ -3,10 +3,9 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 import numpy as np
-from scipy.stats import zscore
 import structlog
 
-from tw_quant_selector.strategies.base import get_strategy, list_strategies
+from tw_quant_selector.strategies.base import get_strategy, list_strategies, safe_zscore
 from tw_quant_selector.portfolio.universe import get_universe, ETF_IDS
 
 log = structlog.get_logger()
@@ -75,7 +74,7 @@ def _combine(
     vals = np.array(list(result.values()))
     if np.std(vals) == 0:
         return {k: 0.0 for k in result}
-    z = zscore(vals)
+    z = safe_zscore(vals)
     return {sid: float(z[i]) for i, sid in enumerate(result)}
 
 

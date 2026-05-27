@@ -2,7 +2,18 @@ import inspect
 from abc import ABC, abstractmethod
 from datetime import date
 from typing import Any, Protocol
+import numpy as np
 import pandas as pd
+from scipy.stats import zscore
+
+
+def safe_zscore(val, eps=1e-12):
+    arr = np.asarray(val, dtype=float)
+    if len(arr) <= 1:
+        return np.array([0.0])
+    if np.std(arr) < eps:
+        return np.zeros_like(arr)
+    return zscore(arr)
 
 
 class DataProvider(Protocol):

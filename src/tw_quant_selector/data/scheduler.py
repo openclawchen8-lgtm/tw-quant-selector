@@ -14,7 +14,7 @@ from tw_quant_selector.data.ingestion import (
 
 log = structlog.get_logger()
 
-DATASETS = ["price", "per", "revenue", "financials", "balance_sheet"]
+DATASETS = ["price", "per", "revenue", "financials"]
 
 _FINMIND_VALID_ID = re.compile(r"^\d{4}$|^00\d{3,4}$")
 
@@ -27,7 +27,6 @@ DATASET_REQUESTS = {
     "per": 1,
     "revenue": 1,
     "financials": 1,
-    "balance_sheet": 1,
 }
 
 REQUESTS_PER_STOCK = sum(DATASET_REQUESTS.values())
