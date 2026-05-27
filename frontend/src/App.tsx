@@ -1,10 +1,12 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import SkeletonLoader from './components/SkeletonLoader';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import { ToastProvider } from './components/Toast';
+import ShortcutHelp, { GLOBAL_SHORTCUTS, TABLE_SHORTCUTS, CHART_SHORTCUTS } from './components/ShortcutHelp';
+import { useGlobalShortcuts } from './hooks/useKeyboardShortcuts';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Signals = lazy(() => import('./pages/Signals'));
@@ -29,6 +31,39 @@ function AnimatedOutlet({ children }: { children: React.ReactNode }) {
   return <div key={location.pathname} className="route-page">{children}</div>;
 }
 
+function ShortcutHelpManager() {
+  useGlobalShortcuts();
+  
+  const [showShortcutHelp, setShowShortcutHelp] = useState(false);
+  const location = useLocation();
+
+  useEffect(() => {
+    const handler = () => setShowShortcutHelp(true);
+    window.addEventListener('shortcut:show-help', handler);
+    return () => window.removeEventListener('shortcut:show-help', handler);
+  }, []);
+
+  const getPageShortcuts = () => {
+    const path = location.pathname;
+    if (path === '/signals' || path === '/') {
+      return TABLE_SHORTCUTS;
+    }
+    if (path === '/backtest') {
+      return CHART_SHORTCUTS;
+    }
+    return [];
+  };
+
+  return (
+    <ShortcutHelp
+      isOpen={showShortcutHelp}
+      onClose={() => setShowShortcutHelp(false)}
+      globalShortcuts={GLOBAL_SHORTCUTS}
+      pageShortcuts={getPageShortcuts()}
+    />
+  );
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -47,6 +82,7 @@ export default function App() {
               <Route path="/settings" element={<AnimatedOutlet><Suspense fallback={<PageFallback />}><ErrorBoundary><Settings /></ErrorBoundary></Suspense></AnimatedOutlet>} />
             </Route>
           </Routes>
+          <ShortcutHelpManager />
         </BrowserRouter>
       </ToastProvider>
     </QueryClientProvider>

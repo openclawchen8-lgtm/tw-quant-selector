@@ -67,12 +67,16 @@ export default function Signals() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (loading || !sorted.length) return;
-      if (['ArrowUp', 'ArrowDown', 'Enter', 'Escape'].includes(e.key)) {
+      if (['ArrowUp', 'ArrowDown', 'Enter', 'Escape', 'Home', 'End'].includes(e.key)) {
         e.preventDefault();
         if (e.key === 'ArrowDown') {
           setFocusedIndex(prev => Math.min(prev + 1, sorted.length - 1));
         } else if (e.key === 'ArrowUp') {
           setFocusedIndex(prev => Math.max(prev - 1, 0));
+        } else if (e.key === 'Home') {
+          setFocusedIndex(0);
+        } else if (e.key === 'End') {
+          setFocusedIndex(sorted.length - 1);
         } else if (e.key === 'Enter') {
           if (focusedIndex >= 0) {
             const sid = sorted[focusedIndex].stock_id;

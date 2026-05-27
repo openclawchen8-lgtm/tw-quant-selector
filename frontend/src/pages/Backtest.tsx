@@ -340,10 +340,25 @@ function BacktestChart({
         return;
       }
       
-      // 0 或 Home: 重設縮放
-      if (e.key === '0' || e.key === 'Home') {
+      // 0: 重設縮放（回到初始狀態）
+      if (e.key === '0') {
         e.preventDefault();
         resetZoom();
+        return;
+      }
+      
+      // Home: 回到最左側（最早日期）
+      if (e.key === 'Home') {
+        e.preventDefault();
+        if (chartRef.current && data.length > 0) {
+          const chart = chartRef.current;
+          const firstDate = new Date(data[0].date).getTime() / 1000;
+          const secondDate = new Date(data[Math.min(29, data.length - 1)].date).getTime() / 1000;
+          chart.timeScale().setVisibleRange({
+            from: firstDate,
+            to: secondDate,
+          });
+        }
         return;
       }
       

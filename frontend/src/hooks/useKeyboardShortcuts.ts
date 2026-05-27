@@ -1,5 +1,4 @@
 import { useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 
 interface ShortcutConfig {
   key: string;
@@ -17,7 +16,6 @@ interface ShortcutConfig {
  * 參考 spec §12.1–§12.5
  */
 export function useKeyboardShortcuts(shortcuts: ShortcutConfig[]) {
-  const navigate = useNavigate();
   const shortcutsRef = useRef(shortcuts);
   shortcutsRef.current = shortcuts;
 
