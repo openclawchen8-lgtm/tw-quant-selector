@@ -8,6 +8,9 @@ FRONTEND_DIR="$PROJECT_DIR/frontend"
 PYTHON_BIN="$VENV_DIR/bin/python"
 UVICORN_BIN="$VENV_DIR/bin/uvicorn"
 NPM_BIN="npm"
+BG_LOG_DIR="/tmp/tw-quant"
+
+mkdir -p "$BG_LOG_DIR"
 
 # ─── 工具函數 ───
 info()  { echo -e "\033[36mℹ\033[0m $*"; }
@@ -16,46 +19,79 @@ warn()  { echo -e "\033[33m⚠\033[0m $*"; }
 err()   { echo -e "\033[31m✗\033[0m $*"; }
 header(){ echo -e "\n\033[1;34m══════════════════════════════════════════\033[0m"; echo -e "  \033[1;37m$*\033[0m"; echo -e "\033[1;34m══════════════════════════════════════════\033[0m"; }
 
-# ─── tmux frame 支援 ───
-is_in_tmux()  { [ -n "${TMUX:-}" ]; }
+# ─── 背景任務管理 ───
+BG_FILE="$BG_LOG_DIR/active"
 
-# ─── 服務管理 ───
-check_is_running() {
-  local pat="$1" name="$2"
-  if pgrep -f "$pat" >/dev/null 2>&1; then
-    echo "$(pgrep -f "$pat" | head -1)"
-    return 0
+bg_start() {
+  local name="$1" log="$BG_LOG_DIR/$2"
+  printf '%s|%s' "$name" "$log" > "$BG_FILE"
+  printf '%s|%s\n' "$name" "$log"
+}
+
+bg_get() {
+  if [ -f "$BG_FILE" ]; then
+    local content
+    content=$(<"$BG_FILE")
+    local name="${content%%|*}"
+    local log="${content#*|}"
+    local pid_file="$log.pid"
+    if [ -f "$pid_file" ] && kill -0 "$(<"$pid_file")" 2>/dev/null; then
+      echo "$content"
+      return 0
+    fi
   fi
   return 1
 }
 
-server_names=""
-
-run_in_frame() {
-  local func_name="$1"
-  if is_in_tmux; then
-    local tmp
-    tmp=$(mktemp /tmp/tw-quant-XXXX.sh)
-    {
-      printf '#!/usr/bin/env bash\nset -uo pipefail\n'
-      printf 'cd %q\n' "$PROJECT_DIR"
-      printf 'PROJECT_DIR=%q\n' "$PROJECT_DIR"
-      printf 'VENV_DIR=%q\n' "$VENV_DIR"
-      printf 'FRONTEND_DIR=%q\n' "$FRONTEND_DIR"
-      printf 'PYTHON_BIN=%q\n' "$PYTHON_BIN"
-      printf 'UVICORN_BIN=%q\n' "$UVICORN_BIN"
-      printf 'NPM_BIN=%q\n' "$NPM_BIN"
-      declare -f info ok warn err header check_venv check_port
-      declare -f "$func_name"
-      printf '%q\n' "$func_name"
-      printf 'echo ""\n'
-      printf 'read -p "  按 Enter 關閉此窗格..."\n'
-    } > "$tmp"
-    chmod +x "$tmp"
-    tmux split-window -v -l 40% "$tmp"
-  else
-    "$func_name"
+bg_stop() {
+  local info
+  info=$(bg_get) || return 1
+  local log="${info#*|}"
+  local pid_file="$log.pid"
+  if [ -f "$pid_file" ]; then
+    local pid
+    pid=$(<"$pid_file")
+    kill "$pid" 2>/dev/null || true
+    rm -f "$pid_file" "$BG_FILE"
   fi
+}
+
+# ─── 畫面工具 ───
+MENU_HEIGHT=18
+
+clear_output() {
+  local rows
+  rows=$(tput lines)
+  local i
+  for ((i = MENU_HEIGHT; i < rows; i++)); do
+    tput cup "$i" 0
+    printf '\033[2K'
+  done
+  tput cup "$MENU_HEIGHT" 0
+}
+
+tail_log() {
+  local log="$1" lines="${2:-20}"
+  if [ -f "$log" ]; then
+    tail -n "$lines" "$log" 2>/dev/null
+  fi
+}
+
+draw_menu() {
+  local sel=$1
+  tput cup 0 0
+  printf '  \033[1;36m🌟 tw-quant-selector 執行選單 \033[0m\n'
+  printf '  ─────────────────────────────\n'
+  for i in "${!MENU_ITEMS[@]}"; do
+    local num=$(( i + 1 ))
+    if [ "$i" -eq "$sel" ]; then
+      printf '  \033[48;5;229m\033[30m %s) %s \033[0m\n' "$num" "${MENU_ITEMS[$i]}"
+    else
+      printf '  %s) %s\n' "$num" "${MENU_ITEMS[$i]}"
+    fi
+  done
+  printf '  ─────────────────────────────\n'
+  printf '  \033[90m↑↓ 移動  Enter 執行  數字鍵選取  l 看Log  q 離開\033[0m'
 }
 
 # ─── 環境檢查 ───
@@ -65,7 +101,6 @@ check_venv() {
     return 0
   else
     warn "虛擬環境未啟用 ($VENV_DIR)"
-    warn "執行: source .venv/bin/activate"
     return 1
   fi
 }
@@ -73,7 +108,6 @@ check_venv() {
 check_port() {
   local port=$1
   if lsof -i :"$port" -P -n 2>/dev/null | grep -q LISTEN; then
-    warn "Port $port 已被佔用"
     return 1
   fi
   return 0
@@ -83,11 +117,12 @@ check_port() {
 
 _start_api_bg() {
   check_port 8000 || { err "API Port 8000 已被佔用"; return 1; }
-  local log_api="/tmp/tw-quant-api-$$.log"
-  "$UVICORN_BIN" tw_quant_selector.api.app:app --reload --host 0.0.0.0 --port 8000 > "$log_api" 2>&1 &
-  printf '  ▶ API (PID: %d) → http://localhost:8000\n' "$!"
+  local log="$BG_LOG_DIR/api.log"
+  "$UVICORN_BIN" tw_quant_selector.api.app:app --reload --host 0.0.0.0 --port 8000 >> "$log" 2>&1 &
+  local pid=$!
+  printf '%d' "$pid" > "$log.pid"
+  printf '  ▶ API (PID: %d) → http://localhost:8000\n' "$pid"
   printf '    Docs → http://localhost:8000/docs\n'
-  printf '    📄 tail -f %s\n' "$log_api"
 }
 
 _start_frontend_bg() {
@@ -96,10 +131,11 @@ _start_frontend_bg() {
     (cd "$FRONTEND_DIR" && $NPM_BIN install)
   fi
   check_port 5173 || { err "Frontend Port 5173 已被佔用"; return 1; }
-  local log_fe="/tmp/tw-quant-frontend-$$.log"
-  (cd "$FRONTEND_DIR" && $NPM_BIN run dev) > "$log_fe" 2>&1 &
-  printf '  ▶ Frontend (PID: %d) → http://localhost:5173\n' "$!"
-  printf '    📄 tail -f %s\n' "$log_fe"
+  local log="$BG_LOG_DIR/frontend.log"
+  (cd "$FRONTEND_DIR" && $NPM_BIN run dev) >> "$log" 2>&1 &
+  local pid=$!
+  printf '%d' "$pid" > "$log.pid"
+  printf '  ▶ Frontend (PID: %d) → http://localhost:5173\n' "$pid"
 }
 
 start_server() {
@@ -114,8 +150,15 @@ start_server() {
 stop_server() {
   header "關閉伺服器"
   local killed=0
-  pkill -f "uvicorn tw_quant_selector" 2>/dev/null && { ok "API 已停止"; killed=1; } || warn "API 未執行"
-  pkill -f "vite" 2>/dev/null && { ok "Frontend 已停止"; killed=1; } || warn "Frontend 未執行"
+  for pat in "uvicorn tw_quant_selector" "vite"; do
+    local pid_file="$BG_LOG_DIR/${pat%% *}.pid"
+    if [ -f "$pid_file" ]; then
+      kill "$(<"$pid_file")" 2>/dev/null && killed=1 || true
+      rm -f "$pid_file"
+    fi
+  done
+  pkill -f "uvicorn tw_quant_selector" 2>/dev/null && killed=1 || true
+  pkill -f "vite" 2>/dev/null && killed=1 || true
   [ "$killed" -eq 1 ] && ok "伺服器已關閉" || warn "沒有執行中的伺服器"
 }
 
@@ -135,7 +178,6 @@ run_tests() {
 run_backtest() {
   header "執行回測"
   check_venv || return 1
-  info "使用預設參數: 2020-01-01 ~ 2024-12-31"
   "$PYTHON_BIN" -c "
 from datetime import date
 from tw_quant_selector.data.database import Database
@@ -150,11 +192,21 @@ for k, v in metrics.items():
 run_scheduler() {
   header "執行排程器 (Ingest Next Bucket)"
   check_venv || return 1
-  if [ -z "$FINMIND_TOKEN" ]; then
+  if [ -z "${FINMIND_TOKEN:-}" ]; then
     echo "❌ 需要設定 FINMIND_TOKEN 環境變數"
     return 1
   fi
-  "$PYTHON_BIN" "$PROJECT_DIR/scripts/run_daily_pipeline.py" "$@"
+
+  local log="$BG_LOG_DIR/scheduler.log"
+  touch "$log"
+  "$PYTHON_BIN" "$PROJECT_DIR/scripts/run_daily_pipeline.py" "$@" >> "$log" 2>&1 &
+  local pid=$!
+  printf '%d' "$pid" > "$log.pid"
+
+  bg_start "scheduler" "scheduler.log" > /dev/null
+  printf '  ▶ 排程器 (PID: %d) 已在背景執行\n' "$pid"
+  printf '    📄 tail -f %s\n' "$log"
+  ok "已啟動，選單可繼續操作"
 }
 
 docker_build() {
@@ -199,23 +251,17 @@ show_status() {
   fi
 
   echo -n "  Port 8000: "
-  check_port 8000 && ok "閒置" || warn "已佔用"
+  if check_port 8000; then ok "閒置"; else warn "已佔用"; fi
 
   echo -n "  Port 5173: "
-  check_port 5173 && ok "閒置" || warn "已佔用"
+  if check_port 5173; then ok "閒置"; else warn "已佔用"; fi
 
-  # 背景服務
-  echo -n "  API: "
-  if pgrep -f "uvicorn tw_quant_selector" >/dev/null 2>&1; then
-    ok "執行中 (PID: $(pgrep -f 'uvicorn tw_quant_selector' | head -1))"
-  else
-    warn "未執行"
-  fi
-  echo -n "  Frontend: "
-  if pgrep -f "vite" >/dev/null 2>&1; then
-    ok "執行中 (PID: $(pgrep -f 'vite' | head -1))"
-  else
-    warn "未執行"
+  local bg
+  bg=$(bg_get) || { ok "無背景任務"; return 0; }
+  local name="${bg%%|*}"
+  local log="${bg#*|}"
+  if [ -f "$log.pid" ]; then
+    printf '  ▶ %s (PID: %s) 執行中\n' "$name" "$(<"$log.pid")"
   fi
 }
 
@@ -236,96 +282,87 @@ MENU_ITEMS=(
 
 MENU_FUNCS=(start_server restart_server stop_server run_tests run_backtest run_scheduler docker_build docker_up docker_down show_status)
 
-CLEAR_LINE="\033[2K\033[G"
-
-draw_menu() {
-  local sel=$1
-  printf '\n  \033[1;36m🌟 tw-quant-selector 執行選單 \033[0m\n'
-  printf '  ─────────────────────────────\n'
-  for i in "${!MENU_ITEMS[@]}"; do
-    local num=$(( i + 1 ))
-    if [ "$i" -eq "$sel" ]; then
-      printf '  \033[48;5;229m\033[30m %s) %s \033[0m\n' "$num" "${MENU_ITEMS[$i]}"
-    else
-      printf '  %s) %s\n' "$num" "${MENU_ITEMS[$i]}"
-    fi
-  done
-  printf '  ─────────────────────────────\n'
-  printf '  \033[90m↑↓ 移動  Enter 執行  數字鍵快速選取  q 離開\033[0m\n'
-}
+# 背景執行型（不阻塞選單）
+BG_FUNCS_REGEX="^(start_server|restart_server|run_scheduler)$"
 
 menu_loop() {
   local sel=0
   local rows=${#MENU_ITEMS[@]}
-  tput civis  # 隱藏游標
-  printf '\033[s'  # 儲存游標位置（選單起點）
-  draw_menu "$sel"
+
+  tput civis
 
   while true; do
+    # ── 清畫面 + 畫選單（避免 scroll region 造成的錯亂） ──
+    clear
+    draw_menu "$sel"
+
+    # ── 顯示背景任務狀態與最近 log ──
+    local bg_name="" bg_log=""
+    if bg_info=$(bg_get 2>/dev/null); then
+      bg_name="${bg_info%%|*}"
+      bg_log="${bg_info#*|}"
+      printf '\n  \033[1;37m▶ %s 背景執行中\033[0m (l=看完整 log, q=離開)\n' "$bg_name"
+      tail_log "$bg_log" 5 2>/dev/null | sed 's/^/  /'
+    fi
+
+    # ── 讀取按鍵 ──
+    tput cup $(( $(tput lines) - 1 )) 0
+    local key
     IFS= read -rsn1 key
+
+    # ── 按鍵處理 ──
     if [ "$key" = $'\033' ]; then
       read -rsn2 -t 1 key2 2>/dev/null || true
       case "$key2" in
-        '[A')  sel=$(( (sel - 1 + rows) % rows )) ;;
-        '[B')  sel=$(( (sel + 1) % rows )) ;;
-        '[C'|'[D') ;;
-        *)     continue ;;
+        '[A') sel=$(( (sel - 1 + rows) % rows )) ;;
+        '[B') sel=$(( (sel + 1) % rows )) ;;
       esac
-      # 重繪後繼續等待按鍵
-      printf '\033[u\033[J'
-      draw_menu "$sel"
       continue
-    elif [ "$key" = "" ]; then  # Enter
+    elif [ "$key" = "" ]; then
+      # Enter → 執行 (若選到離開則直接跳)
+      [ "$sel" -eq $((rows - 1)) ] && { tput cnorm; clear; exit 0; }
       :
     elif [ "$key" = "q" ] || [ "$key" = "Q" ]; then
-      sel=$((rows - 1))
-      :
+      tput cnorm; clear; exit 0
+    elif [ "$key" = "l" ] || [ "$key" = "L" ]; then
+      clear
+      if [ -n "$bg_name" ]; then
+        printf '  \033[1;37m📋 %s 完整輸出:\033[0m\n' "$bg_name"
+        tail_log "$bg_log" 50 2>/dev/null
+      else
+        printf '  ⚠ 沒有執行中的背景任務\n'
+      fi
+      printf '\n  \033[90m按 Enter 返回選單...\033[0m'
+      read -rsn1
+      continue
     elif [[ "$key" =~ [0-9] ]]; then
       local idx=$(( key - 1 ))
-      if [ "$key" = "0" ]; then
-        idx=$((rows - 1))
-      fi
-      if [ "$idx" -ge 0 ] && [ "$idx" -lt "$rows" ]; then
-        sel=$idx
-        :
-      fi
+      [ "$key" = "0" ] && idx=$((rows - 1))
+      [ "$idx" -ge 0 ] && [ "$idx" -lt "$rows" ] && sel=$idx || continue
     else
       continue
     fi
 
-    # 離開
-    if [ "$sel" -eq $((rows - 1)) ]; then
-      printf '\033[u\033[J'
-      tput cnorm
-      echo ""
-      exit 0
-    fi
-
-    # 清除選單並執行
-    printf '\033[u\033[J'
-    tput cnorm
-    echo ""
-    run_in_frame "${MENU_FUNCS[$sel]}"
-
-    if ! is_in_tmux; then
-      echo ""
-      read -rp "  按 Enter 返回選單..."
-      if command -v tmux &>/dev/null; then
-        printf '  \033[90m💡 用 tmux 體驗上下分窗：tmux new-session -A -s tw-quant\n\033[0m'
-      fi
-    fi
-
-    # 重繪選單
-    tput civis
-    printf '\033[s'
+    # ── 執行選擇的功能 ──
+    clear
     draw_menu "$sel"
+    tput cnorm
+    "${MENU_FUNCS[$sel]}"
+
+    # ── 前景功能：等 Enter 後才回到選單 ──
+    if [[ ! "${MENU_FUNCS[$sel]}" =~ $BG_FUNCS_REGEX ]]; then
+      printf '\n  \033[90m按 Enter 返回選單...\033[0m'
+      read -rsn1
+    fi
+
+    tput civis
+    # 回到 while 頂端 → clear + draw_menu + 背景狀態
   done
 }
 
 # ─── Main ───
 
 if [ $# -gt 0 ]; then
-  # 直接模式: run.sh <command>
   case "$1" in
     start|server) start_server ;;
     restart)      restart_server ;;
@@ -342,5 +379,4 @@ if [ $# -gt 0 ]; then
   exit 0
 fi
 
-# 光棒選單模式
 menu_loop

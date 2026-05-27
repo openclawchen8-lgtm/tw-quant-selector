@@ -51,5 +51,5 @@ class ValueStrategy(BaseStrategy):
         if np.std(vals) == 0:
             return {k: 0.0 for k in scores}
 
-        z = zscore(vals)
+        z = safe_zscore(vals)
         return {sid: float(z[i]) for i, sid in enumerate(scores)}

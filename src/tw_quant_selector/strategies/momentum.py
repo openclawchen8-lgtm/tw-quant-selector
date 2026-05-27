@@ -3,9 +3,8 @@ from math import log
 
 import numpy as np
 import pandas as pd
-from scipy.stats import zscore
 
-from tw_quant_selector.strategies.base import BaseStrategy, register_strategy
+from tw_quant_selector.strategies.base import BaseStrategy, register_strategy, safe_zscore
 
 
 @register_strategy
@@ -52,5 +51,5 @@ class MomentumStrategy(BaseStrategy):
         if np.std(vals) == 0:
             return {k: 0.0 for k in scores}
 
-        z = zscore(vals)
+        z = safe_zscore(vals)
         return {sid: float(z[i]) for i, sid in enumerate(scores)}
