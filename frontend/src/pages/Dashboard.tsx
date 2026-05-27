@@ -5,6 +5,7 @@ import StatCard from '../components/StatCard';
 import FactorMiniBar from '../components/FactorMiniBar';
 import SkeletonScreen from '../components/SkeletonScreen';
 import EmptyState from '../components/EmptyState';
+import { formatNumber } from '../utils/format';
 import styles from './Dashboard.module.css';
 
 interface SignalItem {
@@ -277,7 +278,7 @@ function SignalRow({ item, navigate, isFocused, expanded, onToggle }: {
         <td data-type="number"><FactorMiniBar name="value" score={item.score * 0.8} /></td>
         <td data-type="number"><FactorMiniBar name="quality" score={item.score * 0.6} /></td>
         <td data-type="number"><FactorMiniBar name="growth" score={item.score * 0.4} /></td>
-        <td data-type="number" className={`font-data ${styles.compositeScore}`}>{item.score.toFixed(2)}</td>
+        <td data-type="number" className={`font-data ${styles.compositeScore}`}>{formatNumber(item.score, { type: 'score' })}</td>
       </tr>
       {expanded && (
         <tr className={styles.expandedRow}>

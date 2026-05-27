@@ -4,6 +4,7 @@ import { fetchStockDetail } from '../api/client';
 import FactorMiniBar from '../components/FactorMiniBar';
 import SkeletonLoader from '../components/SkeletonLoader';
 import EmptyState from '../components/EmptyState';
+import { formatNumber } from '../utils/format';
 import styles from './StockDetail.module.css';
 
 interface StockInfo {
@@ -53,7 +54,7 @@ export default function StockDetail() {
           <span className={styles.meta}>{info.market} {info.industry || ''}</span>
         </div>
         <div className={styles.priceSection}>
-          <span className={styles.price}>{lastPrice != null ? lastPrice.toFixed(2) : '—'}</span>
+          <span className={styles.price}>{formatNumber(lastPrice, { type: 'price' })}</span>
           <span className={styles.change} style={{ color: 'var(--color-bull-text)' }}>▲—</span>
         </div>
       </div>
@@ -113,7 +114,7 @@ export default function StockDetail() {
                     <tr><td colSpan={4} className={styles.emptyCell}>尚無本益比資料，資料排程 ingesting 中</td></tr>
                   ) : valuations.slice(0, 8).map((v) => (
                     <tr key={v.d}><td>{v.d}</td><td className="font-data">{v.pe ?? '—'}</td><td className="font-data">{v.pb ?? '—'}</td>
-                      <td className="font-data">{v.dy != null ? `${(v.dy * 100).toFixed(2)}%` : '—'}</td></tr>
+                      <td className="font-data">{formatNumber(v.dy, { type: 'percent' })}</td></tr>
                   ))}
                 </tbody>
               </table>
@@ -128,11 +129,11 @@ export default function StockDetail() {
                   ) : financials.slice(0, 8).map((f) => (
                     <tr key={f.yq}>
                       <td>{f.yq}</td>
-                      <td className="font-data">{f.rev != null ? Number(f.rev).toLocaleString() : '—'}</td>
+                      <td className="font-data">{formatNumber(f.rev, { type: 'market_cap' })}</td>
                       <td className="font-data">{f.eps ?? '—'}</td>
-                      <td className="font-data">{f.roe != null ? `${(f.roe * 100).toFixed(2)}%` : '—'}</td>
-                      <td className="font-data">{f.gm != null ? `${(f.gm * 100).toFixed(2)}%` : '—'}</td>
-                      <td className="font-data">{f.de != null ? f.de.toFixed(2) : '—'}</td>
+                      <td className="font-data">{formatNumber(f.roe, { type: 'percent' })}</td>
+                      <td className="font-data">{formatNumber(f.gm, { type: 'percent' })}</td>
+                      <td className="font-data">{formatNumber(f.de, { type: 'ratio', decimals: 2 })}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -147,9 +148,9 @@ export default function StockDetail() {
                     <tr><td colSpan={3} className={styles.emptyCell}>尚無月營收資料，資料排程 ingesting 中</td></tr>
                   ) : revenue.slice(0, 12).map((r) => (
                     <tr key={r.ym}><td>{r.ym}</td>
-                      <td className="font-data">{r.rev != null ? Number(r.rev).toLocaleString() : '—'}</td>
+                      <td className="font-data">{formatNumber(r.rev, { type: 'market_cap' })}</td>
                       <td className="font-data" style={{ color: r.yoy != null && r.yoy > 0 ? 'var(--color-bull-text)' : r.yoy != null && r.yoy < 0 ? 'var(--color-bear-text)' : undefined }}>
-                        {r.yoy != null ? `${(r.yoy * 100).toFixed(2)}%` : '—'}
+                        {formatNumber(r.yoy, { type: 'percent' })}
                       </td>
                     </tr>
                   ))}

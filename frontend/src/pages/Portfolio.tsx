@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import EmptyState from '../components/EmptyState';
+import { formatNumber } from '../utils/format';
 import styles from './Portfolio.module.css';
 
 const API = 'http://localhost:8000';
@@ -239,7 +240,7 @@ export default function Portfolio() {
           <div key={s.label} className={styles.summaryCard}>
             <div className={styles.summaryLabel}>{s.label}</div>
             <div className={`${styles.summaryValue} ${s.colored && totalPnl >= 0 ? styles.bullText : s.colored && totalPnl < 0 ? styles.bearText : ''}`}>
-              {s.pct ? `${(Number(s.value) * 100).toFixed(2)}%` : `$${Math.round(Number(s.value)).toLocaleString()}`}
+              {s.pct ? formatNumber(s.value, { type: 'percent' }) : `$${formatNumber(Math.round(Number(s.value)), { type: 'market_cap' }).replace('億', '')}`}
             </div>
           </div>
         ))}
@@ -277,15 +278,15 @@ export default function Portfolio() {
                   <tr key={h.stock_id} className={styles.dataRow}>
                     <td className={styles.stockLink} onClick={() => navigate(`/signals/${h.stock_id}`)}>{h.stock_id}</td>
                     <td>{h.name}</td>
-                    <td data-type="number">{h.totalShares.toLocaleString()}</td>
-                    <td data-type="number">{h.avgCost.toFixed(2)}</td>
-                    <td data-type="number">{h.current_price != null ? h.current_price.toFixed(2) : '—'}</td>
+                    <td data-type="number">{formatNumber(h.totalShares, { type: 'volume' }).replace('萬張', '')}</td>
+                    <td data-type="number">{formatNumber(h.avgCost, { type: 'price' })}</td>
+                    <td data-type="number">{formatNumber(h.current_price, { type: 'price' })}</td>
                     <td data-type="number" className={pnl >= 0 ? styles.bullText : styles.bearText}>
                       <span className={styles.pnlIcon}>{pnl >= 0 ? '▲' : '▼'}</span>
-                      ${Math.round(pnl).toLocaleString()}
+                      ${formatNumber(Math.round(pnl), { type: 'market_cap' }).replace('億', '')}
                     </td>
                     <td data-type="number" className={pnl >= 0 ? styles.bullText : styles.bearText}>
-                      {pnl >= 0 ? '+' : ''}{(pnlPct * 100).toFixed(2)}%
+                      {pnl >= 0 ? '+' : ''}{formatNumber(pnlPct, { type: 'percent' })}
                     </td>
                     {/* Alert status column */}
                     <td data-type="number">
@@ -309,7 +310,7 @@ export default function Portfolio() {
                         </button>
                       )}
                     </td>
-                    <td data-type="number">{(weight * 100).toFixed(1)}%</td>
+                    <td data-type="number">{formatNumber(weight, { type: 'percent' })}</td>
                     <td>{h.lots[0]?.date || ''}</td>
                     <td>
                       <button className={styles.expandBtn} onClick={() => toggleExpand(h.stock_id)}>
@@ -418,14 +419,14 @@ export default function Portfolio() {
                 return (
                   <tr key={l.id} className={styles.detailRow}>
                     <td data-type="number">{l.date}</td>
-                    <td data-type="number">{l.shares.toLocaleString()}</td>
-                    <td data-type="number">{l.cost.toFixed(2)}</td>
-                    <td data-type="number">{cur != null ? cur.toFixed(2) : '—'}</td>
+                    <td data-type="number">{formatNumber(l.shares, { type: 'volume' }).replace('萬張', '')}</td>
+                    <td data-type="number">{formatNumber(l.cost, { type: 'price' })}</td>
+                    <td data-type="number">{formatNumber(cur, { type: 'price' })}</td>
                     <td data-type="number" className={lpnl >= 0 ? styles.bullText : styles.bearText}>
-                      ${Math.round(lpnl).toLocaleString()}
+                      ${formatNumber(Math.round(lpnl), { type: 'market_cap' }).replace('億', '')}
                     </td>
                     <td data-type="number" className={lpnl >= 0 ? styles.bullText : styles.bearText}>
-                      {lpnlPct >= 0 ? '+' : ''}{(lpnlPct * 100).toFixed(2)}%
+                      {lpnlPct >= 0 ? '+' : ''}{formatNumber(lpnlPct, { type: 'percent' })}
                     </td>
                     <td><button className={styles.delBtn} onClick={() => removeLot(l.id)}>✕</button></td>
                   </tr>

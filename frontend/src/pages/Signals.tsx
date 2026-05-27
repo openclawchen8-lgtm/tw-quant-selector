@@ -5,6 +5,7 @@ import FactorMiniBar from '../components/FactorMiniBar';
 import ExportModal from '../components/ExportModal';
 import SkeletonScreen from '../components/SkeletonScreen';
 import EmptyState from '../components/EmptyState';
+import { formatNumber } from '../utils/format';
 import styles from './Signals.module.css';
 
 interface SignalItem {
@@ -297,7 +298,7 @@ function SignalRow({ item, navigate, expanded, onToggle, isFocused }: {
         <td data-type="number"><FactorMiniBar name="value" score={value} /></td>
         <td data-type="number"><FactorMiniBar name="quality" score={quality} /></td>
         <td data-type="number"><FactorMiniBar name="growth" score={growth} /></td>
-        <td data-type="number" className={`font-data ${styles.compositeScore}`}>{item.score.toFixed(2)}</td>
+        <td data-type="number" className={`font-data ${styles.compositeScore}`}>{formatNumber(item.score, { type: 'score' })}</td>
         <td data-type="number" className="font-data" style={{ color: 'var(--text-muted)' }}>
           {item.consecutive_days != null ? item.consecutive_days : '—'}
         </td>

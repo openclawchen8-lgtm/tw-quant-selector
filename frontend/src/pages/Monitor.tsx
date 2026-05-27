@@ -3,6 +3,7 @@ import { fetchDashboard, fetchMonitorLogs, fetchMonitorDatasets,
   type DashboardData, type LogEntry, type DatasetInfo } from '../api/client';
 import SkeletonLoader from '../components/SkeletonLoader';
 import EmptyState from '../components/EmptyState';
+import { formatNumber } from '../utils/format';
 import styles from './Monitor.module.css';
 
 type HealthLevel = 'normal' | 'warning' | 'critical' | 'offline';
@@ -118,7 +119,7 @@ export default function Monitor() {
             {dash.tracker.map((ds) => (
               <tr key={ds.dataset} className={styles.dataRow}>
                 <td className={styles.datasetName}>{ds.dataset}</td>
-                <td data-type="number">{(ds.count || 0).toLocaleString()}</td>
+                <td data-type="number">{formatNumber(ds.count || 0, { type: 'volume' }).replace('萬張', '')}</td>
                 <td className={ds.count === 0 ? styles.stale : ''}>
                   {lastPriceDate ? lastPriceDate.slice(0, 10) : '—'}
                 </td>

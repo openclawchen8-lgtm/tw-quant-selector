@@ -235,3 +235,33 @@
   transition: height 0.3s;
   min-height: 2px;
 }
+
+/* T051: Reset Zoom Button */
+.resetZoomBtn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  background: var(--bg-surface);
+  border: 1px solid var(--bg-border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  z-index: 10;
+}
+
+.resetZoomBtn:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border-color: var(--color-accent);
+}
+
+.resetZoomBtn:active {
+  transform: scale(0.95);
+}

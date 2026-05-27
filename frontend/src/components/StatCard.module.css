@@ -38,6 +38,16 @@
   line-height: 1.1;
 }
 
+/* T050: 數字顏色化 */
+.text-positive { color: var(--color-positive) !important; }
+.text-negative { color: var(--color-negative) !important; }
+.text-neutral { color: var(--text-primary) !important; }
+.text-excellent { color: var(--color-excellent) !important; }
+.text-good { color: var(--color-good) !important; }
+.text-poor { color: var(--color-poor) !important; }
+.text-muted { color: var(--text-tertiary) !important; }
+.text-warning { color: var(--color-warning) !important; }
+
 .delta {
   font-size: var(--font-size-sm);
   font-weight: 500;
