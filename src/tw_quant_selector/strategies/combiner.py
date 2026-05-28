@@ -17,6 +17,14 @@ DEFAULT_WEIGHTS: dict[str, float] = {
     "growth": 0.20,
 }
 
+DEFAULT_5FACTOR_WEIGHTS: dict[str, float] = {
+    "momentum": 0.25,
+    "value": 0.20,
+    "quality": 0.20,
+    "growth": 0.15,
+    "guru": 0.20,
+}
+
 
 def compute_composite_scores(
     db, as_of_date: date, weights: dict[str, float] | None = None,
@@ -73,6 +81,29 @@ def _combine(
             if sid not in combined:
                 combined[sid] = []
             combined[sid].append(score * weight)
+
+    guru_weight = weights.get("guru", 0)
+    if guru_weight > 0:
+        from tw_quant_selector.strategies.guru_scoring import compute_guru_scores
+        guru_strategy_params = (strategy_params or {}).get("guru", {})
+        guru_weights = guru_strategy_params.get("guru_weights")
+        guru_scores = compute_guru_scores(db, stock_ids, as_of_date)
+        guru_combined: dict[str, float] = {}
+        for sid in stock_ids:
+            if sid not in guru_scores:
+                continue
+            sg = guru_scores[sid]
+            composite = sum(sg.get(g, 0) * float(guru_weights.get(g, 1.0 / 6)) for g in sg) if guru_weights else float(np.mean(list(sg.values())))
+            guru_combined[sid] = composite
+            individual["guru"] = {sid: composite for sid in guru_combined}
+        if guru_combined:
+            gvals = np.array(list(guru_combined.values()))
+            if np.std(gvals) > 1e-12:
+                gz = safe_zscore(gvals)
+                for i, sid in enumerate(guru_combined):
+                    if sid not in combined:
+                        combined[sid] = []
+                    combined[sid].append(float(gz[i]) * guru_weight)
 
     result: dict[str, float] = {}
     for sid, components in combined.items():

@@ -643,6 +643,116 @@ def run_strategies(req: StrategyRunRequest):
     return api_response(result)
 
 
+class PreviewRequest(StrategyRunRequest):
+    holdings: list[dict] = []
+
+
+@app.post("/api/v1/strategy/preview")
+def strategy_preview(req: PreviewRequest):
+    from datetime import date as d_date
+    from tw_quant_selector.portfolio.preview import preview_impact
+    as_of = d_date.fromisoformat(req.as_of_date) if req.as_of_date else d_date.today()
+    result = preview_impact(
+        db, as_of, req.holdings,
+        weights=req.weights,
+        strategy_params=req.strategy_params,
+        top_n_stocks=req.top_n_stocks,
+        top_n_etfs=req.top_n_etfs,
+    )
+    return api_response(result)
+
+
+@app.get("/api/v1/strategy/correlation")
+def strategy_correlation(as_of_date: str | None = None, lookback_days: int = 252):
+    from tw_quant_selector.strategies.correlation import compute_factor_correlation
+    from datetime import date as d_date
+    as_of = d_date.fromisoformat(as_of_date) if as_of_date else d_date.today()
+    matrix = compute_factor_correlation(db, as_of, lookback_days)
+    return api_response({"matrix": matrix, "as_of_date": as_of.isoformat()})
+
+
+class GuruConfigRequest(BaseModel):
+    enabled: bool = False
+    selected_guru: str = "buffett"
+    guru_weight: float = 0.20
+
+
+_guru_config: dict[str, Any] = {
+    "enabled": False,
+    "selected_guru": "buffett",
+    "guru_weight": 0.20,
+}
+
+
+@app.get("/api/v1/strategy/guru-config")
+def get_guru_config():
+    from tw_quant_selector.strategies.guru_filters import list_guru_filters
+    return api_response({
+        **_guru_config,
+        "available_gurus": list_guru_filters(),
+        "default_5factor_weights": {
+            "momentum": 0.25, "value": 0.20,
+            "quality": 0.20, "growth": 0.15, "guru": 0.20,
+        },
+    })
+
+
+@app.put("/api/v1/strategy/guru-config")
+def update_guru_config(req: GuruConfigRequest):
+    _guru_config.update({
+        "enabled": req.enabled,
+        "selected_guru": req.selected_guru,
+        "guru_weight": req.guru_weight,
+    })
+    return api_response(_guru_config)
+
+
+@app.post("/api/v1/strategy/run-guru-scoring")
+def run_guru_scoring():
+    from datetime import date as d_date
+    from tw_quant_selector.strategies.guru_scoring import run_guru_scoring as _run_scoring
+    count = _run_scoring(db, d_date.today())
+    return api_response({"scored": count})
+
+
+@app.get("/api/v1/strategy/config-history")
+def config_history(limit: int = 10, offset: int = 0):
+    rows = db.execute(
+        """SELECT * FROM strategy_config_history ORDER BY changed_at DESC LIMIT ? OFFSET ?""",
+        [limit, offset],
+    ).fetchall()
+    cols = [desc[0] for desc in db.description]
+    return api_response([dict(zip(cols, r)) for r in rows])
+
+
+class SaveConfigRequest(BaseModel):
+    weights: dict[str, float] = {}
+    advanced_params: dict[str, Any] = {}
+    guru_config: dict[str, Any] = {}
+    universe_config: dict[str, Any] = {}
+    changed_by: str = "user"
+    note: str = ""
+
+
+@app.post("/api/v1/strategy/config-history")
+def save_config(req: SaveConfigRequest):
+    import json
+    db.execute(
+        """INSERT INTO strategy_config_history (weights, advanced_params, guru_config, universe_config, changed_by, note)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        [json.dumps(req.weights), json.dumps(req.advanced_params),
+         json.dumps(req.guru_config), json.dumps(req.universe_config),
+         req.changed_by, req.note],
+    )
+    return api_response({"saved": True})
+
+
+@app.delete("/api/v1/strategy/config-history/{config_id}")
+def delete_config(config_id: int):
+    db.execute("DELETE FROM strategy_config_history WHERE config_id = ?", [config_id])
+    return api_response({"deleted": True})
+
+
 # ── Serve Built Frontend (Docker / production) ──
 _frontend_dist = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "dist"
 if _frontend_dist.is_dir():

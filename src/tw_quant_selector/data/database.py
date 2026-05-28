@@ -52,6 +52,17 @@ CREATE TABLE IF NOT EXISTS financials (
     gross_margin    DECIMAL(8,4),
     operating_margin DECIMAL(8,4),
     debt_to_equity  DECIMAL(8,4),
+    total_assets    BIGINT,
+    total_liabilities BIGINT,
+    cash            BIGINT,
+    current_assets  BIGINT,
+    current_liabilities BIGINT,
+    net_fixed_assets BIGINT,
+    ebit            BIGINT,
+    enterprise_value BIGINT,
+    roic            DECIMAL(8,4),
+    peg             DECIMAL(8,4),
+    current_ratio   DECIMAL(8,4),
     announcement_date DATE,
     PRIMARY KEY (stock_id, year_quarter)
 );
@@ -74,6 +85,27 @@ CREATE TABLE IF NOT EXISTS signals (
     rank            INTEGER,
     is_selected     BOOLEAN,
     PRIMARY KEY (signal_date, stock_id, strategy)
+);
+
+CREATE TABLE IF NOT EXISTS guru_scores (
+    score_date      DATE NOT NULL,
+    stock_id        VARCHAR NOT NULL,
+    guru            VARCHAR NOT NULL,
+    score           DECIMAL(8,4),
+    pass_filter     BOOLEAN,
+    criteria_detail JSON,
+    PRIMARY KEY (score_date, stock_id, guru)
+);
+
+CREATE TABLE IF NOT EXISTS strategy_config_history (
+    config_id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    changed_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    weights         JSON,
+    advanced_params JSON,
+    guru_config     JSON,
+    universe_config JSON,
+    changed_by      VARCHAR DEFAULT 'user',
+    note            VARCHAR
 );
 
 CREATE TABLE IF NOT EXISTS backtest_runs (
