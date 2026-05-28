@@ -5,6 +5,7 @@ import FactorMiniBar from '../components/FactorMiniBar';
 import ExportModal from '../components/ExportModal';
 import SkeletonScreen from '../components/SkeletonScreen';
 import EmptyState from '../components/EmptyState';
+import MissingDataSummary from '../components/MissingDataSummary';
 import { formatNumber, colorize } from '../utils/format';
 import styles from './Signals.module.css';
 
@@ -241,6 +242,11 @@ export default function Signals() {
               ))}
             </tbody>
           </table>
+          <MissingDataSummary missing={{
+            連續天數: sorted.filter(s => s.consecutive_days == null).length,
+            因子分數: sorted.filter(s => !s.factor_scores || Object.keys(s.factor_scores).length === 0).length,
+            排名變動: sorted.filter(s => s.rank_change == null).length,
+          }} />
         </div>
       )}
       </SkeletonScreen>

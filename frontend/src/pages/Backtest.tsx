@@ -4,6 +4,7 @@ import { createChart, ColorType, LineSeries, AreaSeries, type IChartApi, type IS
 import { fetchBacktestEquity, type EquityPoint } from '../api/client';
 import { formatNumber, colorize } from '../utils/format';
 import { DesktopOnly } from '../utils/responsive';
+import ErrorBoundary from '../components/ErrorBoundary';
 import styles from './Backtest.module.css';
 
 
@@ -231,7 +232,7 @@ export default function Backtest() {
                 <h3 id="equity-label">累積淨值 <span className={styles.legend}><span style={{color:'var(--color-bull)', borderBottom: '2px solid var(--color-bull)'}}>— 策略（實線）</span> <span style={{color:'var(--text-muted)', borderBottom: '1px dashed var(--text-muted)'}}>--- 0050（虛線）</span></span></h3>
                 <div style={{ position: 'relative' }}>
                   {chartLoading ? <SkeletonLoader variant="chart" height={250} children={<></>} /> : (
-                    equityData.length === 0 ? <div style={{ height: 250, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>尚無淨值資料</div> : <BacktestChart data={equityData} height={250} searchParams={searchParams} setSearchParams={setSearchParams} />
+                    equityData.length === 0 ? <div style={{ height: 250, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>尚無淨值資料</div> : <ErrorBoundary level="component" name="淨值曲線"><BacktestChart data={equityData} height={250} searchParams={searchParams} setSearchParams={setSearchParams} /></ErrorBoundary>
                   )}
                 </div>
               </div>

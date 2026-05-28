@@ -1,10 +1,12 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fetchLatestSignals } from '../api/client';
+import { usePageCache } from '../hooks/usePageCache';
 import StatCard from '../components/StatCard';
 import FactorMiniBar from '../components/FactorMiniBar';
 import SkeletonScreen from '../components/SkeletonScreen';
 import EmptyState from '../components/EmptyState';
+import ErrorBoundary from '../components/ErrorBoundary';
 import { formatNumber, colorize } from '../utils/format';
 import MarketStatus from '../components/MarketStatus';
 import styles from './Dashboard.module.css';
@@ -31,14 +33,27 @@ export default function Dashboard() {
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const tableRef = useRef<HTMLTableElement>(null);
 
+  const { getCached, setCached } = usePageCache<SignalsData>('dashboard');
+  const [stale, setStale] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setStale(false);
     try {
       const s = await fetchLatestSignals('composite', true).catch(() => null);
-      setSignals(s as SignalsData | null);
+      if (s) {
+        setSignals(s as SignalsData);
+        setCached(s as SignalsData);
+      } else {
+        const cached = getCached();
+        if (cached) { setSignals(cached); setStale(true); }
+        else setSignals(null);
+      }
     } catch (e: any) {
-      setError(e.message);
+      const cached = getCached();
+      if (cached) { setSignals(cached); setStale(true); setError('無法更新，顯示快取資料'); }
+      else setError(e.message);
     } finally {
       setLoading(false);
     }
@@ -106,7 +121,13 @@ export default function Dashboard() {
         </button>
       </div>
 
-      {error && (
+      {stale && (
+        <div className={styles.errorBanner} style={{ background: 'var(--color-warning-dim, rgba(245,158,11,0.15))' }}>
+          ⚠ 無法連線，顯示快取資料（資料可能已過時）
+          <button className={styles.retryBtn} onClick={load}>重試</button>
+        </div>
+      )}
+      {error && !stale && (
         <div className={styles.errorBanner}>
           ⚠ 載入失敗：{error}
           <button className={styles.retryBtn} onClick={load}>重試</button>
@@ -115,22 +136,22 @@ export default function Dashboard() {
 
       {/* KPI row */}
       <div className={styles.kpiRow} role="group" aria-label="關鍵指標總覽">
-        <StatCard label="今日選股" value={signals?.stocks.length ?? 0} variant="highlight" loading={loading} />
-        <StatCard label="入選ETF" value={signals?.etfs.length ?? 0} loading={loading} />
-        <StatCard
+        <ErrorBoundary level="component" name="今日選股"><StatCard label="今日選股" value={signals?.stocks.length ?? 0} variant="highlight" loading={loading} /></ErrorBoundary>
+        <ErrorBoundary level="component" name="入選ETF"><StatCard label="入選ETF" value={signals?.etfs.length ?? 0} loading={loading} /></ErrorBoundary>
+        <ErrorBoundary level="component" name="組合分數"><StatCard
           label="組合分數"
           value={signals?.stocks.reduce((s, i) => s + i.score, 0) ?? 0}
           format="raw"
           loading={loading}
-        />
-        <StatCard
+        /></ErrorBoundary>
+        <ErrorBoundary level="component" name="大盤概況"><StatCard
           label="大盤概況"
           value={loading ? 0 : '加權'}
           format="raw"
           loading={loading}
           delta={0.003}
           deltaLabel="vs 昨日"
-        />
+        /></ErrorBoundary>
       </div>
 
       {/* Weekly portfolio P&L */}

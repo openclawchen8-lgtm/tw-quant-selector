@@ -68,6 +68,7 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
+        <ErrorBoundary level="fullscreen">
         <BrowserRouter>
           <Routes>
             <Route element={<Layout />}>
@@ -84,6 +85,7 @@ export default function App() {
           </Routes>
           <ShortcutHelpManager />
         </BrowserRouter>
+        </ErrorBoundary>
       </ToastProvider>
     </QueryClientProvider>
   );
