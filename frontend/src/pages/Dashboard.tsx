@@ -1,14 +1,16 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fetchLatestSignals } from '../api/client';
 import { usePageCache } from '../hooks/usePageCache';
+import BaseTable from '../components/BaseTable';
 import StatCard from '../components/StatCard';
 import FactorMiniBar from '../components/FactorMiniBar';
-import SkeletonScreen from '../components/SkeletonScreen';
 import EmptyState from '../components/EmptyState';
 import ErrorBoundary from '../components/ErrorBoundary';
+import { useToast } from '../components/Toast';
 import { formatNumber, colorize } from '../utils/format';
 import MarketStatus from '../components/MarketStatus';
+import type { ColumnDef } from '@tanstack/react-table';
 import styles from './Dashboard.module.css';
 
 interface SignalItem {
@@ -16,6 +18,7 @@ interface SignalItem {
   name?: string;
   score: number;
   rank: number;
+  factor_scores?: Record<string, number> | null;
 }
 
 interface SignalsData {
@@ -29,9 +32,7 @@ export default function Dashboard() {
   const [signals, setSignals] = useState<SignalsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [focusedIndex, setFocusedIndex] = useState(-1);
-  const [expandedRow, setExpandedRow] = useState<string | null>(null);
-  const tableRef = useRef<HTMLTableElement>(null);
+  const { addToast } = useToast();
 
   const { getCached, setCached } = usePageCache<SignalsData>('dashboard');
   const [stale, setStale] = useState(false);
@@ -52,8 +53,8 @@ export default function Dashboard() {
       }
     } catch (e: any) {
       const cached = getCached();
-      if (cached) { setSignals(cached); setStale(true); setError('無法更新，顯示快取資料'); }
-      else setError(e.message);
+      if (cached) { setSignals(cached); setStale(true); setError('無法更新，顯示快取資料'); addToast('無法更新，顯示快取資料', 'high'); }
+      else { setError(e.message); addToast(`載入失敗: ${e.message}`, 'high'); }
     } finally {
       setLoading(false);
     }
@@ -70,46 +71,80 @@ export default function Dashboard() {
   const etfIds = new Set(signals?.etfs?.map((e) => e.stock_id) || []);
   const stockItems = sorted.filter((s) => !etfIds.has(s.stock_id));
   const etfItems = sorted.filter((s) => etfIds.has(s.stock_id));
+  const displayData = [...stockItems, ...etfItems];
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (loading || !sorted.length) return;
-      if (['ArrowUp', 'ArrowDown', 'Enter', 'Escape'].includes(e.key)) {
-        // Only prevent default if we are focusing the table or no other input is focused
-        if (document.activeElement?.tagName !== 'INPUT') {
-          e.preventDefault();
-          if (e.key === 'ArrowDown') {
-            setFocusedIndex(prev => Math.min(prev + 1, sorted.length - 1));
-          } else if (e.key === 'ArrowUp') {
-            setFocusedIndex(prev => Math.max(prev - 1, 0));
-          } else if (e.key === 'Enter') {
-            if (focusedIndex >= 0) {
-              const sid = sorted[focusedIndex].stock_id;
-              setExpandedRow(prev => prev === sid ? null : sid);
-            }
-          } else if (e.key === 'Escape') {
-            setExpandedRow(null);
-          }
-        }
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [loading, sorted, focusedIndex]);
-
-  useEffect(() => {
-    if (focusedIndex >= 0 && tableRef.current) {
-      const rows = tableRef.current.querySelectorAll('tr[data-stock-id]');
-      const target = rows[focusedIndex];
-      if (target) {
-        target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      }
-    }
-  }, [focusedIndex]);
+  const columns: ColumnDef<SignalItem, any>[] = [
+    {
+      id: 'rank',
+      header: '排名',
+      accessorKey: 'rank',
+      meta: { width: 48, align: 'right' as const },
+      cell: ({ getValue }) => <span className={styles.rankCell}>#{getValue<number>()}</span>,
+    },
+    {
+      id: 'stock_id',
+      header: '股票',
+      accessorKey: 'stock_id',
+      meta: { width: 160 },
+      cell: ({ row }) => (
+        <span className={styles.stockLink} onClick={(e) => { e.stopPropagation(); navigate(`/signals/${row.original.stock_id}`); }}>
+          {row.original.stock_id} {row.original.name || ''}
+        </span>
+      ),
+    },
+    {
+      id: 'close_price',
+      header: '收盤價',
+      meta: { width: 88, align: 'right' as const },
+      cell: () => <span className="font-data">—</span>,
+    },
+    {
+      id: 'change',
+      header: '今日漲跌',
+      meta: { width: 80, align: 'right' as const },
+      cell: () => <span className="font-data" style={{ color: 'var(--color-bull-text)' }}>—</span>,
+    },
+    {
+      id: 'momentum',
+      header: '動能',
+      accessorFn: (row: SignalItem) => row.factor_scores?.momentum ?? row.score,
+      meta: { width: 100, align: 'right' as const },
+      cell: ({ row }) => <FactorMiniBar name="momentum" score={row.original.factor_scores?.momentum ?? row.original.score} />,
+    },
+    {
+      id: 'value',
+      header: '價值',
+      accessorFn: (row: SignalItem) => row.factor_scores?.value ?? row.score * 0.8,
+      meta: { width: 100, align: 'right' as const },
+      cell: ({ row }) => <FactorMiniBar name="value" score={row.original.factor_scores?.value ?? row.original.score * 0.8} />,
+    },
+    {
+      id: 'quality',
+      header: '品質',
+      accessorFn: (row: SignalItem) => row.factor_scores?.quality ?? row.score * 0.6,
+      meta: { width: 100, align: 'right' as const },
+      cell: ({ row }) => <FactorMiniBar name="quality" score={row.original.factor_scores?.quality ?? row.original.score * 0.6} />,
+    },
+    {
+      id: 'growth',
+      header: '成長',
+      accessorFn: (row: SignalItem) => row.factor_scores?.growth ?? row.score * 0.4,
+      meta: { width: 100, align: 'right' as const },
+      cell: ({ row }) => <FactorMiniBar name="growth" score={row.original.factor_scores?.growth ?? row.original.score * 0.4} />,
+    },
+    {
+      id: 'score',
+      header: '綜合分數',
+      accessorKey: 'score',
+      meta: { width: 80, align: 'right' as const },
+      cell: ({ getValue }) => (
+        <span className={`font-data ${styles.compositeScore}`}>{formatNumber(getValue<number>(), { type: 'score' })}</span>
+      ),
+    },
+  ];
 
   return (
     <div className={styles.page}>
-      {/* Page header */}
       <div className={styles.header}>
         <h1 className={styles.title}>今日總覽 Dashboard</h1>
         <span className={styles.headerDate}>
@@ -134,7 +169,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* KPI row */}
       <div className={styles.kpiRow} role="group" aria-label="關鍵指標總覽">
         <ErrorBoundary level="component" name="今日選股"><StatCard label="今日選股" value={signals?.stocks.length ?? 0} variant="highlight" loading={loading} /></ErrorBoundary>
         <ErrorBoundary level="component" name="入選ETF"><StatCard label="入選ETF" value={signals?.etfs.length ?? 0} loading={loading} /></ErrorBoundary>
@@ -154,17 +188,15 @@ export default function Dashboard() {
         /></ErrorBoundary>
       </div>
 
-      {/* Weekly portfolio P&L */}
       <div className={styles.weeklyPnl}>
         <span className={styles.pnlLabel}>本週持倉損益</span>
-        <span className={styles.pnlBull}>+2.4%</span>
+        <span className={styles.pnlBull}>▲ +2.4%</span>
         <span className={styles.pnlLabel}>vs 0050</span>
-        <span className={styles.pnlMuted}>+1.1%</span>
+        <span className={styles.pnlMuted}>▲ +1.1%</span>
         <span className={styles.pnlLabel}>超額</span>
-        <span className={styles.pnlBull}>+1.3%</span>
+        <span className={styles.pnlBull}>▲ +1.3%</span>
       </div>
 
-      {/* Signal table */}
       <div className={styles.sectionHeader}>
         <h2>今日入選個股 Top {signals?.stocks.length || 20}</h2>
         <div className={styles.headerActions}>
@@ -173,62 +205,22 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <SkeletonScreen loading={loading} variant="table" rows={5} width="100%" height={320}>
-      {allItems.length === 0 ? (
-        <EmptyState scenario="notrade" onRetry={() => navigate('/monitor')}>
-          今日沒有符合條件的選股結果
-        </EmptyState>
-      ) : (
-        <div className={styles.tableWrapper}>
-          <table className={styles.table} role="grid" aria-label="最新選股訊號表格" ref={tableRef}>
-            <thead>
-              <tr>
-                <th style={{ width: 48 }} data-type="number">排名</th>
-                <th style={{ width: 160 }}>股票</th>
-                <th style={{ width: 88 }} data-type="number">收盤價</th>
-                <th style={{ width: 80 }} data-type="number">今日漲跌</th>
-                <th style={{ width: 100 }} data-type="number">動能</th>
-                <th style={{ width: 100 }} data-type="number">價值</th>
-                <th style={{ width: 100 }} data-type="number">品質</th>
-                <th style={{ width: 100 }} data-type="number">成長</th>
-                <th style={{ width: 80 }} data-type="number">綜合分數</th>
-              </tr>
-            </thead>
-            <tbody>
-              {/* Stocks */}
-              {stockItems.map((item) => (
-                <SignalRow
-                  key={item.stock_id}
-                  item={item}
-                  navigate={navigate}
-                  isFocused={sorted[focusedIndex]?.stock_id === item.stock_id}
-                  expanded={expandedRow === item.stock_id}
-                  onToggle={() => setExpandedRow(prev => prev === item.stock_id ? null : item.stock_id)}
-                />
-              ))}
-              {/* ETF separator */}
-              {etfItems.length > 0 && (
-                <tr className={styles.groupDivider}>
-                  <td colSpan={9}>─ ETFs ─</td>
-                </tr>
-              )}
-              {etfItems.map((item) => (
-                <SignalRow
-                  key={item.stock_id}
-                  item={item}
-                  navigate={navigate}
-                  isFocused={sorted[focusedIndex]?.stock_id === item.stock_id}
-                  expanded={expandedRow === item.stock_id}
-                  onToggle={() => setExpandedRow(prev => prev === item.stock_id ? null : item.stock_id)}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      </SkeletonScreen>
+      <BaseTable<SignalItem>
+        columns={columns}
+        data={displayData}
+        loading={loading}
+        emptyMessage="今日沒有符合條件的選股結果"
+        sortable={false}
+        getRowId={(row) => row.stock_id}
+        renderRowDetail={() => (
+          <div>因子趨勢與近 30 日圖（T021 實作）</div>
+        )}
+        groupLabel={(row, i, all) => {
+          if (i > 0 && etfIds.has(row.stock_id) && !etfIds.has(all[i - 1].stock_id)) return 'ETF';
+          return null;
+        }}
+      />
 
-      {/* Factor contribution & weekly changes */}
       <div className={styles.bottomGrid}>
         <div className={styles.panel}>
           <h3>因子貢獻摘要</h3>
@@ -270,48 +262,5 @@ export default function Dashboard() {
         </div>
       </div>
     </div>
-  );
-}
-
-function SignalRow({ item, navigate, isFocused, expanded, onToggle }: {
-  item: SignalItem; navigate: (p: string) => void;
-  isFocused: boolean; expanded: boolean; onToggle: () => void;
-}) {
-  return (
-    <>
-      <tr
-        tabIndex={0}
-        className={`${styles.dataRow} ${isFocused ? styles.focused : ''}`}
-        onClick={onToggle}
-        onKeyDown={(e) => { if (e.key === 'Enter') onToggle(); if (e.key === 'Escape') onToggle(); }}
-        data-stock-id={item.stock_id}
-      >
-        <td data-type="number" className={styles.rankCell}>#{item.rank}</td>
-        <td>
-          <span
-            className={styles.stockLink}
-            onClick={(e) => { e.stopPropagation(); navigate(`/signals/${item.stock_id}`); }}
-          >
-            {item.stock_id} {item.name || ''}
-          </span>
-        </td>
-        <td data-type="number" className="font-data">—</td>
-        <td data-type="number" className="font-data" style={{ color: 'var(--color-bull-text)' }}>—</td>
-        <td data-type="number"><FactorMiniBar name="momentum" score={item.score} /></td>
-        <td data-type="number"><FactorMiniBar name="value" score={item.score * 0.8} /></td>
-        <td data-type="number"><FactorMiniBar name="quality" score={item.score * 0.6} /></td>
-        <td data-type="number"><FactorMiniBar name="growth" score={item.score * 0.4} /></td>
-        <td data-type="number" className={`font-data ${styles.compositeScore}`}>{formatNumber(item.score, { type: 'score' })}</td>
-      </tr>
-      {expanded && (
-        <tr className={styles.expandedRow}>
-          <td colSpan={9}>
-            <div className={styles.inlineDetail}>
-              因子趨勢與近 30 日圖（T021 實作）
-            </div>
-          </td>
-        </tr>
-      )}
-    </>
   );
 }

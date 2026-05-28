@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import EmptyState from '../components/EmptyState';
+import { useToast } from '../components/Toast';
 import { formatNumber } from '../utils/format';
 import styles from './Portfolio.module.css';
 
@@ -86,6 +87,7 @@ function loadAlertConfigs(): Record<string, StockAlertConfig> {
 
 export default function Portfolio() {
   const navigate = useNavigate();
+  const { addToast } = useToast();
   const [lots, setLots] = useState<Lot[]>(loadLots());
   const [cashBalance, setCashBalance] = useState(() => {
     try { return Number(localStorage.getItem('tw_quant_cash') || '0'); }
@@ -98,6 +100,9 @@ export default function Portfolio() {
   const [adding, setAdding] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [prices, setPrices] = useState<Record<string, { name: string; close: number | null }>>({});
+  const [newRows, setNewRows] = useState<Set<string>>(new Set());
+  const [exitingLots, setExitingLots] = useState<Set<string>>(new Set());
+  const [errors, setErrors] = useState<Record<string, boolean>>({});
 
   // ── Alert / Threshold states ──
   const [alertConfigs, setAlertConfigs] = useState<Record<string, StockAlertConfig>>(loadAlertConfigs);
@@ -140,18 +145,37 @@ export default function Portfolio() {
     const sh = Number(shares);
     const co = Number(cost);
     const dt = date;
-    if (!sid || sh <= 0 || co <= 0) return;
+    const newErrors: Record<string, boolean> = {};
+    if (!sid) newErrors.stockId = true;
+    if (!shares || sh <= 0) newErrors.shares = true;
+    if (!cost || co <= 0) newErrors.cost = true;
+    setErrors(newErrors);
+    if (Object.keys(newErrors).length > 0) return;
     setAdding(true);
     try {
       const p = await apiFetch<Record<string, { name: string; close: number | null }>>(`/api/v1/stocks/prices?ids=${sid}`);
       if (p[sid]) setPrices((prev) => ({ ...prev, [sid]: p[sid] }));
-    } catch { /* ignore */ }
-    setLots((prev) => [...prev, { id: `${sid}-${dt}-${Date.now()}`, stock_id: sid, date: dt, shares: sh, cost: co }]);
-    setStockId(''); setShares(''); setCost('');
+      addToast(`${sid} 已加入投組`, 'low');
+    } catch {
+      addToast(`${sid} 價格查詢失敗，仍以成本價計算`, 'medium');
+    }
+    const newId = `${sid}-${dt}-${Date.now()}`;
+    setLots((prev) => [...prev, { id: newId, stock_id: sid, date: dt, shares: sh, cost: co }]);
+    setNewRows((prev) => new Set(prev).add(sid));
+    setTimeout(() => setNewRows((prev) => { const n = new Set(prev); n.delete(sid); return n; }), 500);
+    setStockId(''); setShares(''); setCost(''); setErrors({});
     setAdding(false);
   };
 
-  const removeLot = (id: string) => setLots((prev) => prev.filter((l) => l.id !== id));
+  const removeLot = (id: string) => {
+    setExitingLots((prev) => new Set(prev).add(id));
+  };
+
+  const finishRemoveLot = (id: string) => {
+    setLots((prev) => prev.filter((l) => l.id !== id));
+    setExitingLots((prev) => { const n = new Set(prev); n.delete(id); return n; });
+    addToast('持股已刪除', 'low');
+  };
 
   // Aggregate by stock_id
   const groups = lots.reduce<Record<string, AggregatedHolding>>((acc, l) => {
@@ -222,9 +246,9 @@ export default function Portfolio() {
 
       {/* Add form */}
       <div className={styles.addForm}>
-        <input className={styles.input} placeholder="股號 (e.g. 2330)" value={stockId} onChange={(e) => setStockId(e.target.value.toUpperCase())} />
-        <input className={styles.input} type="number" placeholder="股數" value={shares} onChange={(e) => setShares(e.target.value)} />
-        <input className={styles.input} type="number" placeholder="每股成本" value={cost} onChange={(e) => setCost(e.target.value)} />
+        <input className={`${styles.input} ${errors.stockId ? 'input-error' : ''}`} placeholder="股號 (e.g. 2330)" value={stockId} onChange={(e) => { setStockId(e.target.value.toUpperCase()); setErrors((p) => ({ ...p, stockId: false })); }} />
+        <input className={`${styles.input} ${errors.shares ? 'input-error' : ''}`} type="number" placeholder="股數" value={shares} onChange={(e) => { setShares(e.target.value); setErrors((p) => ({ ...p, shares: false })); }} />
+        <input className={`${styles.input} ${errors.cost ? 'input-error' : ''}`} type="number" placeholder="每股成本" value={cost} onChange={(e) => { setCost(e.target.value); setErrors((p) => ({ ...p, cost: false })); }} />
         <input className={styles.input} type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         <button className={`${styles.addBtn}${adding ? ' btn-loading' : ''}`} onClick={addLot} disabled={adding}>加入</button>
       </div>
@@ -275,7 +299,7 @@ export default function Portfolio() {
                 const breach = getBreachStatus(h.stock_id, pnl, pnlPct);
 
                 return (
-                  <tr key={h.stock_id} className={styles.dataRow}>
+                  <tr key={h.stock_id} className={`${styles.dataRow} ${newRows.has(h.stock_id) ? 'row-new' : ''}`}>
                     <td className={styles.stockLink} onClick={() => navigate(`/signals/${h.stock_id}`)}>{h.stock_id}</td>
                     <td>{h.name}</td>
                     <td data-type="number">{formatNumber(h.totalShares, { type: 'volume' }).replace('萬張', '')}</td>
@@ -417,16 +441,18 @@ export default function Portfolio() {
                 const lpnl = lp - lc;
                 const lpnlPct = (cur ?? l.cost) / l.cost - 1;
                 return (
-                  <tr key={l.id} className={styles.detailRow}>
+                  <tr key={l.id} className={`${styles.detailRow} ${exitingLots.has(l.id) ? 'row-exiting' : ''}`}
+                    onAnimationEnd={exitingLots.has(l.id) ? () => finishRemoveLot(l.id) : undefined}>
                     <td data-type="number">{l.date}</td>
                     <td data-type="number">{formatNumber(l.shares, { type: 'volume' }).replace('萬張', '')}</td>
                     <td data-type="number">{formatNumber(l.cost, { type: 'price' })}</td>
                     <td data-type="number">{formatNumber(cur, { type: 'price' })}</td>
                     <td data-type="number" className={lpnl >= 0 ? styles.bullText : styles.bearText}>
+                      <span className={styles.pnlIcon}>{lpnl >= 0 ? '▲' : '▼'}</span>
                       ${formatNumber(Math.round(lpnl), { type: 'market_cap' }).replace('億', '')}
                     </td>
                     <td data-type="number" className={lpnl >= 0 ? styles.bullText : styles.bearText}>
-                      {lpnlPct >= 0 ? '+' : ''}{formatNumber(lpnlPct, { type: 'percent' })}
+                      {lpnl >= 0 ? '▲' : '▼'} {lpnlPct >= 0 ? '+' : ''}{formatNumber(lpnlPct, { type: 'percent' })}
                     </td>
                     <td><button className={styles.delBtn} onClick={() => removeLot(l.id)}>✕</button></td>
                   </tr>

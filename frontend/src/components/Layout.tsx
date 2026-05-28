@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { searchStocks, type StockSearchResult } from '../api/client';
 import Sidebar from './Sidebar';
+import MarketStatus from './MarketStatus';
 import styles from './Layout.module.css';
 
 export default function Layout() {
@@ -97,7 +98,9 @@ export default function Layout() {
           alertOnMonitor={false}
         />
         <main className={styles.content}>
-          <div className={styles.searchWrap} ref={searchRef}>
+          <div className={styles.topBar}>
+            <MarketStatus />
+            <div className={styles.searchWrap} ref={searchRef}>
             <input
               data-search
               className={styles.searchInput}
@@ -118,6 +121,7 @@ export default function Layout() {
                 ))}
               </div>
             )}
+          </div>
           </div>
           <div aria-live="polite" aria-atomic="true" className="sr-only" />
           <Outlet />

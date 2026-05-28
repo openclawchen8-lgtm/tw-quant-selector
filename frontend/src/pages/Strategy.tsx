@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import SkeletonLoader from '../components/SkeletonLoader';
 import { DesktopOnly, MobileMessage } from '../utils/responsive';
+import { formatNumber } from '../utils/format';
 import styles from './Strategy.module.css';
 
 const API = 'http://localhost:8000';
@@ -632,7 +633,7 @@ export default function Strategy() {
                 <input type="range" min={0} max={200} step={5} value={minMarketCap / 100_000_000}
                   onChange={(e) => setMinMarketCap(Number(e.target.value) * 100_000_000)}
                   className={styles.slider} />
-                <span className="font-data">{minMarketCap >= 1_000_000_000 ? `${(minMarketCap / 100_000_000).toFixed(0)}億` : '不限'}</span>
+                <span className="font-data">{minMarketCap >= 1_000_000_000 ? formatNumber(minMarketCap, { type: 'market_cap' }) : '不限'}</span>
               </div>
             </div>
             <div className={styles.filterRow}>
@@ -677,7 +678,7 @@ export default function Strategy() {
                   <span className={styles.textTurnover}>換手 {preview.turnover_pct}%</span>
                 </div>
                 <div className={styles.previewCost}>
-                  預估成本：手續費+稅 ${preview.cost.buy_cost.toLocaleString()} / 入帳 ${preview.cost.sell_proceeds.toLocaleString()}
+                  預估成本：手續費+稅 ${formatNumber(preview.cost.buy_cost, { type: 'market_cap' })} / 入帳 ${formatNumber(preview.cost.sell_proceeds, { type: 'market_cap' })}
                 </div>
                 {preview.to_buy.length > 0 && (
                   <details className={styles.previewDetails}>
@@ -810,8 +811,8 @@ export default function Strategy() {
                     return (
                       <div key={s2} className={styles.corrCell}
                         style={{ background: bg, color: textColor }}
-                        title={`${STRATEGY_CN[s1]} vs ${STRATEGY_CN[s2]}: ${v > 0 ? '+' : ''}${(v * 100).toFixed(1)}%`}>
-                        {(v * 100).toFixed(0)}%
+                        title={`${STRATEGY_CN[s1]} vs ${STRATEGY_CN[s2]}: ${formatNumber(v, { type: 'percent' })}`}>
+                        {formatNumber(v, { type: 'percent' })}
                       </div>
                     );
                   })}
@@ -860,7 +861,7 @@ export default function Strategy() {
               {preview && (
                 <p className={styles.impactText}>
                   買 {preview.to_buy.length} / 賣 {preview.to_sell.length} / 留 {preview.unchanged.length}
-                  ｜換手 {preview.turnover_pct}% ｜成本 ${preview.cost.total_cost.toLocaleString()}
+                  ｜換手 {preview.turnover_pct}% ｜成本 ${formatNumber(preview.cost.total_cost, { type: 'market_cap' })}
                 </p>
               )}
               <div className={styles.filterRow}>

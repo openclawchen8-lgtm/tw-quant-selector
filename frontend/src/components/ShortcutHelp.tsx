@@ -133,4 +133,5 @@ export const CHART_SHORTCUTS: ShortcutItem[] = [
   { keys: ['Shift', '→'], description: '快速平移：向右' },
   { keys: ['0'], description: '重設到初始狀態' },
   { keys: ['Home'], description: '回到最左側（最早日期）' },
+  { keys: ['End'], description: '跳到最右側（最新日期）' },
 ];

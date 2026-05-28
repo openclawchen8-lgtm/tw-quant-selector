@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { DesktopOnly, MobileMessage } from '../utils/responsive';
 import SkeletonScreen from '../components/SkeletonScreen';
+import { useToast } from '../components/Toast';
 import styles from './Settings.module.css';
 
 const API = 'http://localhost:8000';
@@ -25,7 +26,7 @@ export default function Settings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const { addToast } = useToast();
 
   const loadSettings = async () => {
     setLoading(true);
@@ -37,7 +38,7 @@ export default function Settings() {
       setSettings(alertData);
       setDbPath(pathData);
     } catch (e: any) {
-      setStatusMsg(`❌ 載入失敗: ${e.message}`);
+      addToast(`載入失敗: ${e.message}`, 'high');
     } finally {
       setLoading(false);
     }
@@ -51,7 +52,6 @@ export default function Settings() {
 
   const handleSave = async () => {
     setSaving(true);
-    setStatusMsg(null);
     try {
       const toSave: Record<string, string> = {};
       settings.forEach(s => {
@@ -77,10 +77,9 @@ export default function Settings() {
       }
 
       await Promise.all(promises);
-      setStatusMsg('✅ 設定已儲存');
-      setTimeout(() => setStatusMsg(null), 3000);
+      addToast('設定已儲存', 'low');
     } catch (e: any) {
-      setStatusMsg(`❌ 儲存失敗: ${e.message}`);
+      addToast(`儲存失敗: ${e.message}`, 'high');
     } finally {
       setSaving(false);
     }
@@ -88,12 +87,11 @@ export default function Settings() {
 
   const handleTestAlert = async () => {
     setTesting(true);
-    setStatusMsg('正在發送測試告警...');
     try {
       await apiFetch('/api/v1/settings/test-alert', { method: 'POST' });
-      setStatusMsg('✅ 測試告警已發送，請檢查您的 Telegram 或 Email');
+      addToast('測試告警已發送，請檢查您的 Telegram 或 Email', 'low');
     } catch (e: any) {
-      setStatusMsg(`❌ 發送失敗: ${e.message}`);
+      addToast(`發送失敗: ${e.message}`, 'high');
     } finally {
       setTesting(false);
     }
@@ -116,12 +114,6 @@ export default function Settings() {
             </button>
           </div>
         </div>
-
-        {statusMsg && (
-          <div className={statusMsg.startsWith('✅') ? styles.successBanner : styles.errorBanner}>
-            {statusMsg}
-          </div>
-        )}
 
         <div className={styles.grid}>
           {/* Database Section */}

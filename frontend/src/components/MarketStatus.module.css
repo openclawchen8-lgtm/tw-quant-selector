@@ -23,11 +23,24 @@
   color: var(--color-text-primary);
 }
 
-.updateTime {
+.updateTime,
+.nextOpen {
   font-size: 12px;
   color: var(--color-text-tertiary);
   font-family: var(--font-mono);
 }
+
+.nextOpen::before {
+  content: '・';
+}
+
+.compact {
+  padding: 2px 8px;
+  font-size: 12px;
+  width: 100%;
+}
+
+.compact .statusRow { gap: 4px; }
 
 /* Status-specific colors */
 .trading {

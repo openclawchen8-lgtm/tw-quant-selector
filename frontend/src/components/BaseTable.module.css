@@ -1,7 +1,5 @@
 /* Component tokens: override :root defaults at this scope */
 .wrapper {
-  --table-row-height: 48px;
-  --table-row-height-dense: 36px;
   border: 1px solid var(--bg-border);
   border-radius: var(--radius-card);
   overflow-x: auto;
@@ -15,7 +13,7 @@
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--font-size-sm);
+  font-size: var(--density-font-size);
 }
 
 .table thead { background: var(--bg-overlay); }
@@ -40,15 +38,21 @@
 
 .innerTable { width: 100%; border-collapse: collapse; }
 
-.dataRow { cursor: pointer; height: var(--table-row-height); }
-.denseRow { height: var(--table-row-height-dense); }
-.dataRow td { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--bg-border); }
-.denseRow td { padding: var(--space-1) var(--space-2); }
+.dataRow { cursor: pointer; height: var(--density-row-height); }
+.dataRow td { padding: calc(var(--space-2) * 0.75) var(--density-cell-padding); border-bottom: 1px solid var(--bg-border); }
 .dataRow:hover td { background: var(--bg-elevated); transition: background var(--dur-hover); }
 
 .focused td {
   border-left: 2px solid var(--color-accent);
   background: var(--bg-elevated);
+}
+
+.selected td {
+  background: var(--color-accent-dim);
+}
+
+.selected td:first-child {
+  border-left: 2px solid var(--color-accent);
 }
 
 .groupDividerRow td { text-align: center; padding: 0; }

@@ -1,3 +1,4 @@
+import { formatNumber } from '../utils/format';
 import styles from './FactorMiniBar.module.css';
 
 const FACTOR_COLORS: Record<string, string> = {
@@ -29,7 +30,7 @@ export default function FactorMiniBar({ name, score }: FactorMiniBarProps) {
     <div
       className={`${styles.bar} font-data`}
       role="img"
-      aria-label={`${label} 因子：分數 ${score >= 0 ? '+' : ''}${score.toFixed(2)}，百分位 ${pct.toFixed(1)}%，趨勢 ${score > 0 ? '上升' : '下降'}`}
+      aria-label={`${label} 因子：分數 ${formatNumber(score, { type: 'score' })}，百分位 ${pct.toFixed(1)}%，趨勢 ${score > 0 ? '上升' : '下降'}`}
     >
       <div
         className={`${styles.fill} ${extreme ? styles.extreme : ''}`}

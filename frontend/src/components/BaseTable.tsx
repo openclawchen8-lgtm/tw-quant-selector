@@ -1,4 +1,4 @@
-import { useRef, useCallback, useMemo, useState, type ReactNode } from 'react';
+import { useRef, useCallback, useMemo, useState, useEffect, type ReactNode } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -27,6 +27,14 @@ interface BaseTableProps<T extends Record<string, any>> {
   getRowId?: (row: T) => string;
   skeletonRows?: number;
   maxHeight?: string;
+  /** Externally controlled expanded row id (overrides internal state) */
+  expandedRow?: string | null;
+  /** Called when row expand toggle happens externally */
+  onExpandedChange?: (id: string | null) => void;
+  /** Selected row ids (for checkbox/Space selection) */
+  selectedRowIds?: Set<string>;
+  /** Called when selection changes */
+  onSelectionChange?: (ids: Set<string>) => void;
 }
 
 const DIVIDER_TYPE = Symbol('divider');
@@ -36,11 +44,24 @@ export default function BaseTable<T extends Record<string, any>>({
   dense, sortable = true, sortState: externalSort, onSortChange,
   onRowClick, renderRowDetail, groupLabel, getRowId,
   skeletonRows = 8, maxHeight,
+  expandedRow: externalExpandedRow, onExpandedChange,
+  selectedRowIds: externalSelectedRowIds, onSelectionChange,
 }: BaseTableProps<T>) {
   const [internalSort, setInternalSort] = useState<SortingState>([]);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [focusIndex, setFocusIndex] = useState(-1);
+  const [internalSelectedRowIds, setInternalSelectedRowIds] = useState<Set<string>>(new Set());
   const tableRef = useRef<HTMLDivElement>(null);
+  const lastClickedRef = useRef<number>(-1);
+
+  const selectedRowIds = externalSelectedRowIds ?? internalSelectedRowIds;
+  const toggleSelection = useCallback((id: string) => {
+    const next = new Set(selectedRowIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    if (onSelectionChange) onSelectionChange(next);
+    setInternalSelectedRowIds(next);
+  }, [selectedRowIds, onSelectionChange]);
 
   const sorting = externalSort ?? internalSort;
   const setSorting = onSortChange ?? setInternalSort;
@@ -86,11 +107,39 @@ export default function BaseTable<T extends Record<string, any>>({
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
-        setFocusIndex((i) => Math.min(i + 1, rowCount - 1));
+        setFocusIndex((i) => {
+          const next = Math.min(i + 1, rowCount - 1);
+          if (e.shiftKey && lastClickedRef.current >= 0) {
+            const start = Math.min(lastClickedRef.current, next);
+            const end = Math.max(lastClickedRef.current, next);
+            const ids = new Set<string>();
+            for (let j = start; j <= end; j++) {
+              const r = table.getRowModel().rows[j];
+              if (r && (r.original as any)._type !== DIVIDER_TYPE) ids.add(r.id);
+            }
+            if (onSelectionChange) onSelectionChange(ids);
+            setInternalSelectedRowIds(ids);
+          }
+          return next;
+        });
         break;
       case 'ArrowUp':
         e.preventDefault();
-        setFocusIndex((i) => Math.max(i - 1, 0));
+        setFocusIndex((i) => {
+          const next = Math.max(i - 1, 0);
+          if (e.shiftKey && lastClickedRef.current >= 0) {
+            const start = Math.min(lastClickedRef.current, next);
+            const end = Math.max(lastClickedRef.current, next);
+            const ids = new Set<string>();
+            for (let j = start; j <= end; j++) {
+              const r = table.getRowModel().rows[j];
+              if (r && (r.original as any)._type !== DIVIDER_TYPE) ids.add(r.id);
+            }
+            if (onSelectionChange) onSelectionChange(ids);
+            setInternalSelectedRowIds(ids);
+          }
+          return next;
+        });
         break;
       case 'Home':
         e.preventDefault();
@@ -104,17 +153,43 @@ export default function BaseTable<T extends Record<string, any>>({
         e.preventDefault();
         const row = table.getRowModel().rows[focusIndex];
         if (row && (row.original as any)._type !== DIVIDER_TYPE) {
-          if (renderRowDetail) toggleExpand(row.id);
-          else if (onRowClick) onRowClick(row.original as T);
+          const id = row.id;
+          if (onExpandedChange) {
+            onExpandedChange(externalExpandedRow === id ? null : id);
+          } else if (renderRowDetail) {
+            toggleExpand(id);
+          } else if (onRowClick) {
+            onRowClick(row.original as T);
+          }
         }
         break;
       }
+      case ' ':
+        e.preventDefault();
+        const spaceRow = table.getRowModel().rows[focusIndex];
+        if (spaceRow && (spaceRow.original as any)._type !== DIVIDER_TYPE) {
+          toggleSelection(spaceRow.id);
+          lastClickedRef.current = focusIndex;
+        }
+        break;
       case 'Escape':
         e.preventDefault();
+        if (onExpandedChange) onExpandedChange(null);
         setExpandedRows(new Set());
+        if (onSelectionChange) onSelectionChange(new Set());
+        setInternalSelectedRowIds(new Set());
         break;
     }
-  }, [focusIndex, renderRowDetail, onRowClick, toggleExpand, table]);
+  }, [focusIndex, renderRowDetail, onRowClick, toggleExpand, table, toggleSelection, onSelectionChange, externalExpandedRow, onExpandedChange]);
+
+  useEffect(() => {
+    if (focusIndex < 0 || !tableRef.current) return;
+    const rows = tableRef.current.querySelectorAll('tr[role="row"]');
+    const target = rows[focusIndex];
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [focusIndex]);
 
   if (loading) {
     return (
@@ -199,7 +274,7 @@ export default function BaseTable<T extends Record<string, any>>({
                 </tr>
               );
             }
-            const isExpanded = expandedRows.has(row.id);
+            const isExpanded = onExpandedChange ? externalExpandedRow === row.id : expandedRows.has(row.id);
             const isFocused = idx === focusIndex;
             return (
               <tr key={row.id} role="row" aria-expanded={isExpanded}>
@@ -207,11 +282,16 @@ export default function BaseTable<T extends Record<string, any>>({
                   <table className={styles.innerTable}>
                     <tbody>
                       <tr
-                        className={`${styles.dataRow} ${dense ? styles.denseRow : ''} ${isFocused ? styles.focused : ''}`}
+                        className={`${styles.dataRow} ${dense ? styles.denseRow : ''} ${isFocused ? styles.focused : ''} ${selectedRowIds.has(row.id) ? styles.selected : ''}`}
                         tabIndex={-1}
                         onClick={() => {
-                          if (renderRowDetail) toggleExpand(row.id);
-                          else onRowClick?.(raw as T);
+                          if (onExpandedChange) {
+                            onExpandedChange(isExpanded ? null : row.id);
+                          } else if (renderRowDetail) {
+                            toggleExpand(row.id);
+                          } else {
+                            onRowClick?.(raw as T);
+                          }
                         }}
                         onMouseEnter={() => setFocusIndex(idx)}
                         onFocus={() => setFocusIndex(idx)}

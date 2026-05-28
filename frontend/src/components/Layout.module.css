@@ -24,15 +24,22 @@
 .content {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-6);
+  padding: var(--density-page-padding);
   max-width: 1440px;
 }
 
+.topBar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
 /* Global search */
-.searchWrap { position: relative; margin-bottom: var(--space-4); }
+.searchWrap { position: relative; flex: 1; }
 .searchInput {
   width: 100%;
-  max-width: 420px;
+  max-width: 360px;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--bg-border);
   border-radius: var(--radius-btn);

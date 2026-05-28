@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { DensityToggle } from './DensityToggle';
+import MarketStatus from './MarketStatus';
 import styles from './Sidebar.module.css';
 
 const navItems = [
@@ -45,6 +46,10 @@ export default function Sidebar({ collapsed, onToggle, alertOnMonitor }: Sidebar
           </NavLink>
         ))}
       </nav>
+      <div className={`${styles.divider} ${collapsed ? styles.dividerCollapsed : ''}`} />
+      <div className={styles.marketStatusWrap}>
+        {!collapsed && <MarketStatus compact />}
+      </div>
       <div className={styles.divider} />
       <div className={styles.footer}>
         {!collapsed && (

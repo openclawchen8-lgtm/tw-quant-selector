@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { animateNumber } from '../utils/animate';
 import {
   formatNumber,
@@ -79,6 +79,7 @@ export default function StatCard({
   const valueClassName = colorizeResult ? `${styles.value} font-data ${colorizeResult.className}` : `${styles.value} font-data`;
   const valueRef = useRef<HTMLDivElement>(null);
   const prevValue = useRef(value);
+  const [flashing, setFlashing] = useState(false);
 
   useEffect(() => {
     if (loading || error || value === prevValue.current) return;
@@ -90,7 +91,9 @@ export default function StatCard({
       ? animateNumber(el, prevValue.current as number, value as number, 400, fmt)
       : (() => { el.textContent = formatted; return () => {}; })();
     prevValue.current = value;
-    return cancel;
+    setFlashing(true);
+    const flashTimer = setTimeout(() => setFlashing(false), 500);
+    return () => { cancel(); clearTimeout(flashTimer); };
   }, [value, format, formatOpts, loading, error, formatted]);
 
   const ariaDesc = delta != null
@@ -100,7 +103,7 @@ export default function StatCard({
   return (
     <div className={`${styles.card} ${styles[variant]} ${errorStyle}`} role="figure" aria-label={ariaDesc}>
       <div className={styles.label}>{label}</div>
-      <div ref={valueRef} className={valueClassName} aria-hidden="true">{formatted}</div>
+      <div ref={valueRef} className={`${valueClassName} ${flashing ? 'value-update' : ''}`} aria-hidden="true">{formatted}</div>
       {delta != null && (
         <div className={`${styles.delta} ${deltaColorClass(delta)}`} aria-hidden="true">
           {deltaIcon(delta)} {deltaLabel ? `${formatValue(Math.abs(delta), 'percent', formatOpts)} ${deltaLabel}` : formatValue(delta, 'percent', formatOpts)}

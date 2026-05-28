@@ -10,13 +10,13 @@ const STATUS_CONFIG: Record<string, { icon: string; label: string }> = {
   holiday: { icon: '🔴', label: '休市中' },
 };
 
-export default function MarketStatus() {
+export default function MarketStatus({ compact }: { compact?: boolean }) {
   const [statusInfo, setStatusInfo] = useState<MarketStatusInfo>(() => getMarketStatus());
 
   useEffect(() => {
     const timer = setInterval(() => {
       setStatusInfo(getMarketStatus());
-    }, 60000); // 每分鐘更新一次
+    }, 60000);
 
     return () => clearInterval(timer);
   }, []);
@@ -24,13 +24,18 @@ export default function MarketStatus() {
   const config = STATUS_CONFIG[statusInfo.status] || STATUS_CONFIG.closed;
 
   return (
-    <div className={`${styles.container} ${styles[statusInfo.status]}`}>
+    <div className={`${styles.container} ${styles[statusInfo.status]} ${compact ? styles.compact : ''}`}>
       <div className={styles.statusRow}>
         <span className={styles.icon}>{config.icon}</span>
         <span className={styles.label}>{config.label}</span>
-        <span className={styles.updateTime}>
-          Last updated: {statusInfo.lastUpdated}
-        </span>
+        {!compact && (
+          <>
+            <span className={styles.updateTime}>{statusInfo.lastUpdated}</span>
+            {statusInfo.status !== 'trading' && (
+              <span className={styles.nextOpen}>{statusInfo.nextOpen}</span>
+            )}
+          </>
+        )}
       </div>
     </div>
   );

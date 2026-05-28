@@ -22,7 +22,10 @@ export default function StockDetail() {
     info: StockInfo; prices: PricePoint[]; valuations: ValPoint[];
     financials: FinPoint[]; revenue: RevPoint[];
   } | null>(null);
-  const [tab, setTab] = useState<'factors' | 'financials' | 'history'>((searchParams.get('tab') as 'factors' | 'financials' | 'history') || 'factors');
+  const validTabs = ['factors', 'financials', 'history'] as const;
+  const rawTab = searchParams.get('tab');
+  const initialTab = validTabs.includes(rawTab as any) ? rawTab as 'factors' | 'financials' | 'history' : 'factors';
+  const [tab, setTab] = useState<'factors' | 'financials' | 'history'>(initialTab);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

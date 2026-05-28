@@ -29,6 +29,8 @@ export function formatPercentile(v: number | null | undefined): string {
 
 export function formatMarketCap(v: number | null | undefined): string {
   if (v == null || Number.isNaN(v)) return '—';
+  const zhao = v / 1_000_000_000_000;
+  if (zhao >= 1) return `${zhao.toFixed(2)}兆`;
   const yi = v / 100_000_000;
   return `${yi.toFixed(1)}億`;
 }
@@ -181,15 +183,44 @@ export interface MarketStatusInfo {
   label: string;
   className: string;
   lastUpdated: string;
+  nextOpen: string;
+}
+
+function nextMarketOpen(now: Date): string {
+  const day = now.getDay();
+  const hour = now.getHours();
+  const minute = now.getMinutes();
+  const currentTime = hour * 60 + minute;
+  const marketOpen = 9 * 60;
+  const marketClose = 13 * 60 + 30;
+
+  if (day === 0 || day === 6 || currentTime >= marketClose) {
+    let daysUntil = 1;
+    if (day === 6) daysUntil = 2;
+    else if (day === 5 && currentTime >= marketClose) daysUntil = 3;
+    const next = new Date(now);
+    next.setDate(next.getDate() + daysUntil);
+    next.setHours(9, 0, 0, 0);
+    return formatDate(next, 'relative');
+  }
+  if (currentTime < marketOpen) {
+    const open = new Date(now);
+    open.setHours(9, 0, 0, 0);
+    return formatDate(open, 'relative');
+  }
+  const close = new Date(now);
+  close.setHours(13, 30, 0, 0);
+  return formatDate(close, 'relative');
 }
 
 export function getMarketStatus(now: Date = new Date()): MarketStatusInfo {
   const hour = now.getHours();
   const minute = now.getMinutes();
   const day = now.getDay();
+  const base = { lastUpdated: formatDate(now, 'relative'), nextOpen: nextMarketOpen(now) };
 
   if (day === 0 || day === 6) {
-    return { status: 'holiday', label: '休市中', className: 'market-closed', lastUpdated: formatDate(now, 'relative') };
+    return { status: 'holiday', label: '休市中', className: 'market-closed', ...base };
   }
 
   const currentTime = hour * 60 + minute;
@@ -197,12 +228,12 @@ export function getMarketStatus(now: Date = new Date()): MarketStatusInfo {
   const marketClose = 13 * 60 + 30;
 
   if (currentTime >= marketOpen && currentTime <= marketClose) {
-    return { status: 'trading', label: '交易中', className: 'market-trading', lastUpdated: formatDate(now, 'relative') };
+    return { status: 'trading', label: '交易中', className: 'market-trading', ...base };
   }
 
   if (currentTime >= marketClose) {
-    return { status: 'post_market', label: '收盤中', className: 'market-closed', lastUpdated: formatDate(now, 'relative') };
+    return { status: 'post_market', label: '收盤中', className: 'market-closed', ...base };
   }
 
-  return { status: 'pre_market', label: '已收盤', className: 'market-closed', lastUpdated: formatDate(now, 'relative') };
+  return { status: 'pre_market', label: '已收盤', className: 'market-closed', ...base };
 }
