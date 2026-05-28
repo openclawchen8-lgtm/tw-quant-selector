@@ -188,32 +188,94 @@ CREATE TABLE IF NOT EXISTS alert_log (
 """
 
 
-class Database:
-    def __init__(self, db_path: str | None = None):
-        self.db_path = db_path or os.getenv("DUCKDB_PATH", str(Path.cwd() / "data" / "tw_quant.duckdb"))
-        self._conn: duckdb.DuckDBPyConnection | None = None
+import threading
+import time
+import structlog
 
-    def connect(self) -> duckdb.DuckDBPyConnection:
-        if self._conn is None:
-            Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
-            self._conn = duckdb.connect(self.db_path)
-        return self._conn
+log = structlog.get_logger()
+
+class Database:
+    def __init__(self, db_path: str | None = None, read_only: bool = False):
+        self.db_path = db_path or os.getenv("DUCKDB_PATH", str(Path.cwd() / "data" / "tw_quant.duckdb"))
+        self.read_only = read_only
+        self._local = threading.local()
+        self._memory_conn: duckdb.DuckDBPyConnection | None = None
+
+    def connect(self, read_only: bool | None = None) -> duckdb.DuckDBPyConnection:
+        if read_only is None:
+            read_only = self.read_only
+        
+        # Special handling for :memory:
+        if self.db_path == ":memory:":
+            if self._memory_conn is None:
+                self._memory_conn = duckdb.connect(self.db_path, read_only=read_only)
+            return self._memory_conn
+
+        # Ensure file exists if we want read-only
+        if read_only and not Path(self.db_path).exists():
+            log.info("database.creating_missing_file", path=self.db_path)
+            try:
+                # Open once in read-write mode to create the file
+                duckdb.connect(self.db_path, read_only=False).close()
+            except Exception as e:
+                log.warning("database.create_file_failed", error=str(e))
+
+        if read_only:
+            # Use thread-local connection for read-only to ensure stability
+            if not hasattr(self._local, "conn") or self._local.conn is None:
+                Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+                self._local.conn = duckdb.connect(self.db_path, read_only=True)
+            return self._local.conn
+
+        # For write access, open a new connection with retries
+        Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+        for i in range(10):
+            try:
+                return duckdb.connect(self.db_path, read_only=False)
+            except duckdb.IOException as e:
+                if "Conflicting lock" in str(e) and i < 9:
+                    time.sleep(0.5)
+                    continue
+                raise
 
     def close(self):
-        if self._conn is not None:
-            self._conn.close()
-            self._conn = None
+        if self._memory_conn is not None:
+            try: self._memory_conn.close()
+            except: pass
+            self._memory_conn = None
+        if hasattr(self._local, "conn") and self._local.conn is not None:
+            try: self._local.conn.close()
+            except: pass
+            self._local.conn = None
 
     @contextmanager
-    def connection(self):
-        conn = self.connect()
+    def connection(self, read_only: bool | None = None):
+        if self.db_path == ":memory:":
+            yield self.connect(read_only=read_only)
+            return
+
+        is_ro = read_only if read_only is not None else self.read_only
+        if is_ro:
+            yield self.connect(read_only=True)
+            return
+
+        # Writer connection: open, yield, close
+        conn = self.connect(read_only=False)
         try:
             yield conn
         finally:
-            pass
+            conn.close()
 
-    def execute(self, query: str, params: list | None = None):
-        return self.connect().execute(query, params or [])
+    def execute(self, query: str, params: list | None = None, read_only: bool | None = None):
+        if read_only is None:
+            q = query.strip().upper()
+            if any(q.startswith(s) for s in ["INSERT", "UPDATE", "DELETE", "DROP", "CREATE", "ALTER"]):
+                read_only = False
+            else:
+                read_only = self.read_only
+        
+        # This is safe for queries because read-only connections are cached in _local
+        return self.connect(read_only=read_only).execute(query, params or [])
 
     def change_path(self, new_path: str):
         # Validate path
@@ -232,9 +294,19 @@ class Database:
         return self.db_path
 
     def init_db(self):
-        with self.connection() as conn:
-            for stmt in CREATE_TABLES_SQL.strip().split(";"):
-                stmt = stmt.strip()
-                if stmt:
-                    conn.execute(stmt + ";")
-            conn.commit()
+        # Database initialization always needs write access
+        try:
+            with self.connection(read_only=False) as conn:
+                for stmt in CREATE_TABLES_SQL.strip().split(";"):
+                    stmt = stmt.strip()
+                    if stmt:
+                        conn.execute(stmt + ";")
+                conn.commit()
+        except (duckdb.IOException, duckdb.ConnectionException) as e:
+            # If the database is locked, it's likely another process is already initializing or writing.
+            # In a read-only context (like the API), we can often ignore this if the DB exists.
+            if "Conflicting lock" in str(e) and Path(self.db_path).exists():
+                log.info("database.init_skipped_locked", path=self.db_path)
+                return
+            log.error("database.init_failed", error=str(e))
+            raise

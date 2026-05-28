@@ -89,6 +89,8 @@ def _pivot_financials(rows: list[dict]) -> pd.DataFrame:
         return pd.DataFrame()
     df = pd.DataFrame(rows)
     df = df[df["type"].isin(FINANCIAL_TYPE_MAP)]
+    if df.empty:
+        return pd.DataFrame()
     df["column"] = df["type"].map(FINANCIAL_TYPE_MAP)
     pivoted = df.pivot_table(
         index=["stock_id", "date"],
@@ -97,12 +99,22 @@ def _pivot_financials(rows: list[dict]) -> pd.DataFrame:
         aggfunc="first",
     ).reset_index()
     pivoted.columns.name = None
+
+    # Ensure all columns exist
+    for col in FINANCIAL_TYPE_MAP.values():
+        if col not in pivoted.columns:
+            pivoted[col] = np.nan
+
     pivoted["year_quarter"] = pivoted["date"].apply(_date_to_year_quarter)
     pivoted["announcement_date"] = pivoted["date"].apply(_estimate_announcement_date)
-    if "gross_profit" in pivoted.columns:
-        pivoted["gross_margin"] = pivoted["gross_profit"] / pivoted["revenue"]
-    if "operating_income" in pivoted.columns:
-        pivoted["operating_margin"] = pivoted["operating_income"] / pivoted["revenue"]
+    if "revenue" in pivoted.columns and pivoted["revenue"].notna().any():
+        if "gross_profit" in pivoted.columns:
+            pivoted["gross_margin"] = pivoted["gross_profit"] / pivoted["revenue"].replace(0, np.nan)
+        if "operating_income" in pivoted.columns:
+            pivoted["operating_margin"] = pivoted["operating_income"] / pivoted["revenue"].replace(0, np.nan)
+    else:
+        pivoted["gross_margin"] = np.nan
+        pivoted["operating_margin"] = np.nan
     return pivoted
 
 
@@ -111,6 +123,8 @@ def _pivot_balance_sheet(rows: list[dict]) -> pd.DataFrame:
         return pd.DataFrame()
     df = pd.DataFrame(rows)
     df = df[df["type"].isin(BALANCE_SHEET_TYPE_MAP)]
+    if df.empty:
+        return pd.DataFrame()
     df["column"] = df["type"].map(BALANCE_SHEET_TYPE_MAP)
     pivoted = df.pivot_table(
         index=["stock_id", "date"],
@@ -119,6 +133,12 @@ def _pivot_balance_sheet(rows: list[dict]) -> pd.DataFrame:
         aggfunc="first",
     ).reset_index()
     pivoted.columns.name = None
+
+    # Ensure all columns exist
+    for col in BALANCE_SHEET_TYPE_MAP.values():
+        if col not in pivoted.columns:
+            pivoted[col] = np.nan
+
     return pivoted
 
 

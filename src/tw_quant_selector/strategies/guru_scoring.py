@@ -53,7 +53,7 @@ def compute_composite_guru_score(
 
 
 def save_guru_scores(db, as_of_date: date, scores: dict[str, dict[str, float]]):
-    with db.connection() as conn:
+    with db.connection(read_only=False) as conn:
         for stock_id, guru_scores in scores.items():
             for guru, score in guru_scores.items():
                 conn.execute(

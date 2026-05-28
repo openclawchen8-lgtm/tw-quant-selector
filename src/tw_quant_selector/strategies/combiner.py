@@ -130,7 +130,7 @@ def _save_signals(db, as_of_date, stock_scores, etf_scores, stock_ranked, etf_ra
     ranked_ids = {r["stock_id"] for r in stock_ranked} | {r["stock_id"] for r in etf_ranked}
     all_scores = {**stock_scores, **etf_scores}
     strategies = ["composite"] + list_strategies()
-    with db.connection() as conn:
+    with db.connection(read_only=False) as conn:
         for strategy in strategies:
             for sid, score in all_scores.items():
                 rank = None

@@ -9,6 +9,7 @@ import ErrorBoundary from '../components/ErrorBoundary';
 import { useToast } from '../components/Toast';
 import { formatNumber } from '../utils/format';
 import MarketStatus from '../components/MarketStatus';
+import SignalRowDetail from '../components/SignalRowDetail';
 import type { ColumnDef } from '@tanstack/react-table';
 import styles from './Dashboard.module.css';
 
@@ -65,12 +66,8 @@ export default function Dashboard() {
   const weekday = ['日', '一', '二', '三', '四', '五', '六'][today.getDay()];
 
   const allItems = [...(signals?.stocks || []), ...(signals?.etfs || [])];
-  const sorted = [...allItems].sort((a, b) => a.rank - b.rank);
-
   const etfIds = new Set(signals?.etfs?.map((e) => e.stock_id) || []);
-  const stockItems = sorted.filter((s) => !etfIds.has(s.stock_id));
-  const etfItems = sorted.filter((s) => etfIds.has(s.stock_id));
-  const displayData = [...stockItems, ...etfItems];
+  const displayData = allItems;
 
   const columns: ColumnDef<SignalItem, any>[] = [
     {
@@ -209,10 +206,10 @@ export default function Dashboard() {
         data={displayData}
         loading={loading}
         emptyMessage="今日沒有符合條件的選股結果"
-        sortable={false}
+        sortable={true}
         getRowId={(row) => row.stock_id}
-        renderRowDetail={() => (
-          <div>因子趨勢與近 30 日圖（T021 實作）</div>
+        renderRowDetail={(row) => (
+          <SignalRowDetail stockId={row.stock_id} />
         )}
         groupLabel={(row, i, all) => {
           if (i > 0 && etfIds.has(row.stock_id) && !etfIds.has(all[i - 1].stock_id)) return 'ETF';

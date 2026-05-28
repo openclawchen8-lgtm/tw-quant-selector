@@ -469,20 +469,47 @@
   margin-top: var(--space-5);
 }
 
-.corrSection h3 {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+.corrCard {
+  background: var(--bg-surface);
+  border: 1px solid var(--bg-border);
+  border-radius: var(--radius-card);
+  padding: var(--space-4);
+}
+
+.corrHeaderRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: var(--space-1);
+}
+
+.corrLegend {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.legendBox {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
 }
 
 .corrGrid {
   display: inline-flex;
   flex-direction: column;
   gap: 2px;
-  margin-top: var(--space-2);
+  margin-top: var(--space-3);
+  padding: var(--space-2);
+  background: var(--bg-elevated);
+  border-radius: var(--radius-btn);
 }
 
 .corrRow {
@@ -492,38 +519,58 @@
 }
 
 .corrLabel {
-  width: 40px;
-  font-size: 10px;
-  font-weight: 600;
+  width: 48px;
+  font-size: 11px;
+  font-weight: 700;
   text-align: right;
   padding-right: var(--space-2);
 }
 
 .corrHeader {
-  width: 56px;
+  width: 64px;
   text-align: center;
-  font-size: 10px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
   padding: var(--space-1) 0;
 }
 
 .corrCell {
-  width: 56px;
-  height: 32px;
+  width: 64px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 12px;
   font-family: var(--font-data);
-  font-weight: 600;
-  border-radius: 3px;
+  font-weight: 700;
+  border-radius: 4px;
   cursor: help;
+  transition: transform 120ms ease;
+}
+
+.corrCell:hover {
+  transform: scale(1.05);
+  z-index: 1;
 }
 
 .corrAdvice {
-  margin-top: var(--space-2);
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  background: var(--bg-elevated);
+  border-radius: var(--radius-btn);
+  border-left: 3px solid var(--color-accent);
+}
+
+.adviceItem {
+  display: flex;
+  gap: var(--space-2);
   font-size: var(--font-size-xs);
   color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.adviceIcon {
+  font-size: 14px;
 }
 
 .historySection {

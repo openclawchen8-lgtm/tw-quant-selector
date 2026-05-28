@@ -26,4 +26,4 @@ def test_init_db_idempotent():
     db.init_db()
     db.init_db()
     tables = db.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'main'").fetchall()
-    assert len(tables) == 12
+    assert len(tables) == 15

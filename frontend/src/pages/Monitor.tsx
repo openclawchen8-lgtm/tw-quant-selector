@@ -3,7 +3,6 @@ import { fetchDashboard, fetchMonitorLogs, fetchMonitorDatasets,
   type DashboardData, type LogEntry, type DatasetInfo } from '../api/client';
 import SkeletonLoader from '../components/SkeletonLoader';
 import EmptyState from '../components/EmptyState';
-import { formatNumber } from '../utils/format';
 import styles from './Monitor.module.css';
 
 type HealthLevel = 'normal' | 'warning' | 'critical' | 'offline';
@@ -120,8 +119,11 @@ export default function Monitor() {
               datasets.reduce<Record<string, { count: number; last_updated: string | null; statuses: string[] }>>((acc, ds) => {
                 if (!acc[ds.dataset]) acc[ds.dataset] = { count: 0, last_updated: null, statuses: [] };
                 acc[ds.dataset].count += ds.count;
-                if (ds.last_updated && (!acc[ds.dataset].last_updated || ds.last_updated > acc[ds.dataset].last_updated)) {
-                  acc[ds.dataset].last_updated = ds.last_updated;
+                if (ds.last_updated) {
+                  const existing = acc[ds.dataset].last_updated;
+                  if (!existing || ds.last_updated > existing) {
+                    acc[ds.dataset].last_updated = ds.last_updated;
+                  }
                 }
                 if (ds.status && !acc[ds.dataset].statuses.includes(ds.status)) {
                   acc[ds.dataset].statuses.push(ds.status);
@@ -165,7 +167,7 @@ export default function Monitor() {
             ) : (
               logs.map((log, i) => (
                 <tr key={log.id ?? i} className={styles.dataRow}>
-                  <td className={styles.logTime}>{log.timestamp?.slice(0, 16) || ''}</td>
+                  <td className={styles.logTime}>{log.timestamp ? log.timestamp.slice(0, 16) : ''}</td>
                   <td><span className={styles.moduleTag}>{log.module}</span></td>
                   <td>{log.event}</td>
                   <td className={log.severity === 'info' ? styles.logOk : log.severity === 'warn' ? styles.logWarn : styles.logErr}>

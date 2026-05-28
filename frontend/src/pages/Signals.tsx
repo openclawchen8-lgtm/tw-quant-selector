@@ -8,6 +8,7 @@ import EmptyState from '../components/EmptyState';
 import MissingDataSummary from '../components/MissingDataSummary';
 import { useToast } from '../components/Toast';
 import { formatNumber, colorize } from '../utils/format';
+import SignalRowDetail from '../components/SignalRowDetail';
 import type { ColumnDef, SortingState } from '@tanstack/react-table';
 import styles from './Signals.module.css';
 
@@ -20,8 +21,6 @@ interface SignalItem {
   consecutive_days?: number | null;
   factor_scores?: Record<string, number> | null;
 }
-
-const FACTOR_KEYS = ['momentum', 'value', 'quality', 'growth'];
 
 export default function Signals() {
   const navigate = useNavigate();
@@ -58,23 +57,26 @@ export default function Signals() {
   }, [sortKey, sortDir, strategy, showEtf, expandedRow]);
 
   const allItems = [...(data?.stocks || []), ...(showEtf ? data?.etfs || [] : [])];
-  const sorted = [...allItems].sort((a, b) => {
+  
+  // Clean manual sorting logic
+  const sortedData = [...allItems].sort((a, b) => {
     const m = sortDir === 'asc' ? 1 : -1;
-    if (sortKey === 'rank') return (a.rank - b.rank) * m;
-    if (sortKey === 'rank_change') return ((a.rank_change ?? 0) - (b.rank_change ?? 0)) * m;
-    if (FACTOR_KEYS.includes(sortKey)) {
-      const af = a.factor_scores?.[sortKey] ?? 0;
-      const bf = b.factor_scores?.[sortKey] ?? 0;
-      return (af - bf) * m;
+    let valA: any, valB: any;
+    
+    if (['momentum', 'value', 'quality', 'growth'].includes(sortKey)) {
+      valA = a.factor_scores?.[sortKey] ?? (a.score * (sortKey === 'momentum' ? 1 : sortKey === 'value' ? 0.8 : sortKey === 'quality' ? 0.6 : 0.4));
+      valB = b.factor_scores?.[sortKey] ?? (b.score * (sortKey === 'momentum' ? 1 : sortKey === 'value' ? 0.8 : sortKey === 'quality' ? 0.6 : 0.4));
+    } else {
+      valA = (a as any)[sortKey];
+      valB = (b as any)[sortKey];
     }
-    if (sortKey === 'stock_id') return (a.stock_id.localeCompare(b.stock_id)) * m;
-    return (a.score - b.score) * m;
+
+    if (typeof valA === 'string') return valA.localeCompare(valB) * m;
+    return ((valA ?? 0) - (valB ?? 0)) * m;
   });
 
   const etfIds = new Set(data?.etfs?.map((e) => e.stock_id) || []);
-  const stockRows = sorted.filter((s) => !etfIds.has(s.stock_id));
-  const etfRows = sorted.filter((s) => etfIds.has(s.stock_id));
-  const displayData = [...stockRows, ...etfRows];
+  const displayData = sortedData;
 
   const today = data?.date || new Date().toISOString().slice(0, 10);
 
@@ -233,8 +235,8 @@ export default function Signals() {
             getRowId={(row) => row.stock_id}
             expandedRow={expandedRow}
             onExpandedChange={(id) => setExpandedRow(id)}
-            renderRowDetail={() => (
-              <div>因子走勢與近30日圖表（T021 後續實作）</div>
+            renderRowDetail={(row) => (
+              <SignalRowDetail stockId={row.stock_id} />
             )}
             groupLabel={(row, i, all) => {
               if (i > 0 && etfIds.has(row.stock_id) && !etfIds.has(all[i - 1].stock_id)) return 'ETF';

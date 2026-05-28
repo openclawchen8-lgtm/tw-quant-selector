@@ -8,8 +8,8 @@ import structlog
 log = structlog.get_logger()
 
 FINMIND_BASE = "https://api.finmindtrade.com/api/v4/data"
-RATE_LIMIT_PER_DAY = 600  # 免費方案: 600 req/hour（認證後）
-
+RATE_LIMIT_PER_HOUR = 600  # 認證後每小時 600 次
+MAX_DAILY_CALLS = 10000    # 每日總上限
 
 class FinMindClient:
     def __init__(self, token: str | None = None):
@@ -18,45 +18,46 @@ class FinMindClient:
             raise ValueError("FINMIND_TOKEN is required")
         self._client = httpx.Client(timeout=60)
         self._headers = {"Authorization": f"Bearer {self.token}"}
+        self._hourly_call_count = 0
+        self._last_reset_hour = datetime.now().hour
         self._daily_call_count = 0
         self._reset_date = date.today()
         self._banned_until: datetime | None = None
         self._banned_logged: float = 0
 
-    def _check_banned(self) -> bool:
-        if self._banned_until is None:
-            return False
-        now = datetime.now()
-        if now >= self._banned_until:
-            self._banned_until = None
-            self._banned_logged = 0
-            return False
-        if now.timestamp() - self._banned_logged > 60:
-            remaining = int((self._banned_until - now).total_seconds())
-            log.warning("finmind.banned_skip", remaining_sec=remaining,
-                        remaining_min=remaining // 60,
-                        eta=self._banned_until.strftime("%H:%M:%S"))
-            self._banned_logged = now.timestamp()
-        return True
-
     def _check_rate_limit(self):
-        today = date.today()
-        if today != self._reset_date:
+        now = datetime.now()
+        # Hourly reset
+        if now.hour != self._last_reset_hour:
+            self._hourly_call_count = 0
+            self._last_reset_hour = now.hour
+        
+        # Daily reset
+        if now.date() != self._reset_date:
             self._daily_call_count = 0
-            self._reset_date = today
+            self._reset_date = now.date()
+
+        self._hourly_call_count += 1
         self._daily_call_count += 1
-        usage_pct = self._daily_call_count / RATE_LIMIT_PER_DAY
-        if usage_pct > 0.8:
-            log.warning("finmind.rate_limit.high", usage_pct=usage_pct, calls=self._daily_call_count)
-        if self._daily_call_count >= RATE_LIMIT_PER_DAY:
-            raise RuntimeError(f"FinMind daily limit reached ({RATE_LIMIT_PER_DAY})")
+
+        if self._hourly_call_count > RATE_LIMIT_PER_HOUR * 0.9:
+            log.warning("finmind.rate_limit.hourly_high", usage=self._hourly_call_count)
+        
+        if self._hourly_call_count >= RATE_LIMIT_PER_HOUR:
+            # We don't necessarily want to raise error, 
+            # but let the API 402 handler handle the backoff.
+            pass
 
     def _request(self, dataset: str, params: dict[str, Any] | None = None) -> list[dict]:
         if self._check_banned():
             return []
         self._check_rate_limit()
         params = {"dataset": dataset, **(params or {})}
-        for attempt in range(2):
+        
+        retry_402_count = 0
+        max_402_retries = 5
+        
+        while True:
             try:
                 resp = self._client.get(FINMIND_BASE, headers=self._headers, params=params)
                 resp.raise_for_status()
@@ -74,35 +75,26 @@ class FinMindClient:
                     pass
                 retry_after = body.get("retry_after", 0)
                 detail = body.get("msg", e.response.text[:200])
-                if retry_after > 0:
-                    eta = datetime.now() + timedelta(seconds=retry_after)
-                    eta_str = eta.strftime("%H:%M:%S")
-                    readable = f"{detail} (~{retry_after//60}min, 預計 {eta_str} 恢復)"
-                else:
-                    readable = detail
+                
                 if status == 402:
+                    retry_402_count += 1
+                    if retry_402_count > max_402_retries:
+                        log.error("finmind.rate_limit_exhausted", dataset=dataset, count=retry_402_count)
+                        return [] # Give up after N retries
+
                     wait_sec = retry_after if retry_after > 0 else 60
-                    self._banned_until = datetime.now() + timedelta(seconds=wait_sec)
-                    self._banned_logged = datetime.now().timestamp()
-                    log.error("finmind.rate_limited_402", dataset=dataset, wait_sec=wait_sec,
-                               msg=readable, retry_after=wait_sec)
-                    log.error("FinMind 402 rate limited, backing off {wait_sec}s", wait_sec=wait_sec)
-                    return []  # stop retrying this dataset, move to next
-                if status in (400, 403, 404):
-                    if retry_after > 0:
-                        self._banned_until = datetime.now() + timedelta(seconds=retry_after)
-                        self._banned_logged = datetime.now().timestamp()
-                    log.warning("finmind.skipped", dataset=dataset, status=status,
-                                msg=readable, retry_after=retry_after)
-                    return []
+                    log.warning("finmind.rate_limited_402", dataset=dataset, 
+                                attempt=retry_402_count, wait_sec=wait_sec)
+                    time.sleep(wait_sec)
+                    continue  # Retry
+
+                # Other errors (400, 403, 404, etc.)
+                log.warning("finmind.skipped", dataset=dataset, status=status, msg=detail)
+                return []
+
             except (httpx.TimeoutException, httpx.TransportError) as e:
-                if attempt == 0:
-                    wait = 2
-                    log.warning("finmind.retry", dataset=dataset, attempt=attempt, wait=wait)
-                    time.sleep(wait)
-                else:
-                    log.error("finmind.failed", dataset=dataset, error=str(e))
-                    return []
+                log.error("finmind.network_failed", dataset=dataset, error=str(e))
+                return []
 
     def get_daily_prices(self, stock_id: str, start: date, end: date) -> list[dict]:
         return self._request("TaiwanStockPrice", {

@@ -23,7 +23,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-db = Database()
+db = Database(read_only=True)
 db.init_db()
 
 
@@ -133,7 +133,7 @@ def get_alert_settings():
 
 @app.post("/api/v1/settings/alerts")
 def update_alert_settings(settings: dict[str, str]):
-    with db.connection() as conn:
+    with db.connection(read_only=False) as conn:
         for k, v in settings.items():
             if k not in ALERT_KEYS:
                 continue
@@ -744,13 +744,14 @@ def save_config(req: SaveConfigRequest):
         [json.dumps(req.weights), json.dumps(req.advanced_params),
          json.dumps(req.guru_config), json.dumps(req.universe_config),
          req.changed_by, req.note],
+        read_only=False
     )
     return api_response({"saved": True})
 
 
 @app.delete("/api/v1/strategy/config-history/{config_id}")
 def delete_config(config_id: int):
-    db.execute("DELETE FROM strategy_config_history WHERE config_id = ?", [config_id])
+    db.execute("DELETE FROM strategy_config_history WHERE config_id = ?", [config_id], read_only=False)
     return api_response({"deleted": True})
 
 
@@ -859,7 +860,31 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
   <h2>🏆 最多資料的股票(Top Stocks)</h2>
   <table><thead><tr><th>股號(ID)</th><th>交易日數(Days)</th></tr></thead><tbody id="top-body"></tbody></table>
   <h2>📈 最新訊號(Latest Signals)</h2>
-  <table><thead><tr><th>股號(ID)</th><th>名稱(Name)</th><th>分數(Score)</th><th>排名(Rank)</th></tr></thead><tbody id="signal-body"></tbody></table>
+  <div class="ctrl-row">
+    <label>選擇策略(Strategy)</label>
+    <select id="dash-strategy" class="search" style="margin-bottom:0" onchange="loadDashboardSignals()">
+      <option value="composite">綜合(Composite)</option>
+      <option value="momentum">動能(Momentum)</option>
+      <option value="value">價值(Value)</option>
+      <option value="quality">品質(Quality)</option>
+      <option value="growth">成長(Growth)</option>
+    </select>
+  </div>
+  <table id="dash-signal-table">
+    <thead>
+      <tr>
+        <th onclick="sortSignals('stock_id')">股號 ⇅</th>
+        <th onclick="sortSignals('name')">名稱 ⇅</th>
+        <th onclick="sortSignals('score')">分數 ⇅</th>
+        <th onclick="sortSignals('rank')">排名 ⇅</th>
+        <th onclick="sortSignals('m')">動能 ⇅</th>
+        <th onclick="sortSignals('v')">價值 ⇅</th>
+        <th onclick="sortSignals('q')">品質 ⇅</th>
+        <th onclick="sortSignals('g')">成長 ⇅</th>
+      </tr>
+    </thead>
+    <tbody id="signal-body"></tbody>
+  </table>
 </div>
 
 <!-- ══════ TAB 2: STRATEGY CONTROL ══════ -->
@@ -1016,23 +1041,71 @@ async function openDataset(ds) {
 // ── Dashboard load ──
 async function loadDashboard() {
   const d = await fetch('/api/v1/dashboard').then(r=>r.json());
-  const s = await fetch('/api/v1/signals/latest?include_etf=true').then(r=>r.json()).catch(()=>null);
   document.getElementById('sub').textContent =
     `  股價(Prices) ${d.price_date_range.min||'?'} ~ ${d.price_date_range.max||'?'} · 本益比(PE/PB) ${d.val_date_range.min||'?'} ~ ${d.val_date_range.max||'?'}`;
   const labels={stocks:'股票(Stocks)',daily_prices:'股價(Prices)',valuations:'本益比(PE/PB)',monthly_revenue:'月營收(Revenue)',financials:'財報(Financials)',signals:'訊號(Signals)',backtest_runs:'回測(Backtests)'};
+  document.getElementById('stats-grid').innerHTML = '';
   for(const[k,v]of Object.entries(d.table_counts)){
     const color=k==='stocks'?'blue':k==='daily_prices'?'green':'yellow';
     document.getElementById('stats-grid').innerHTML+=`<div class="card"><div class="label">${labels[k]||k}</div><div class="value ${color}">${v.toLocaleString()}</div></div>`;
   }
   const dsLabels={daily_prices:'股價(Prices)',valuations:'本益比/淨值比(PE/PB)',monthly_revenue:'月營收(Revenue)',financials:'財報(Financials)',signals:'訊號(Signals)'};
+  document.getElementById('tracker-body').innerHTML = '';
   for(const r of d.tracker)
     document.getElementById('tracker-body').innerHTML+=`<tr onclick="openDataset('${r.dataset}')"><td class="clickable">${dsLabels[r.dataset]||r.dataset}</td><td><span class="badge ${r.status}">${r.status=='ok'?'成功(OK)':r.status=='failed'?'失敗(Failed)':r.status=='skipped'?'略過(Skipped)':r.status}</span></td><td>${r.count}</td></tr>`;
+  document.getElementById('top-body').innerHTML = '';
   for(const r of d.top_stocks)
     document.getElementById('top-body').innerHTML+=`<tr onclick="openStock('${r.stock_id}')"><td class="clickable">${r.stock_id}</td><td>${r.days}天</td></tr>`;
-  if(s) for(const item of[...s.stocks,...s.etfs])
-    document.getElementById('signal-body').innerHTML+=`<tr onclick="openStock('${item.stock_id}')"><td class="clickable">${item.stock_id}</td><td>${item.name||'-'}</td><td>${item.score.toFixed(4)}</td><td>#${item.rank}</td></tr>`;
-  else
-    document.getElementById('signal-body').innerHTML='<tr><td colspan="4" class="loading">尚無訊號 — 執行策略評分後產生(No signals yet — run Strategy Scoring)</td></tr>';
+  loadDashboardSignals();
+}
+
+let dashSignals = [];
+let sortState = { key: 'rank', asc: true };
+
+async function loadDashboardSignals() {
+  const strat = document.getElementById('dash-strategy').value;
+  document.getElementById('signal-body').innerHTML = '<tr><td colspan="8" class="loading">載入中...</td></tr>';
+  const s = await fetch(`/api/v1/signals/latest?strategy=${strat}&include_etf=true&top_n=100`).then(r=>r.json()).catch(()=>null);
+  if (s) {
+    dashSignals = [...(s.stocks || []), ...(s.etfs || [])];
+    renderSignalTable();
+  } else {
+    document.getElementById('signal-body').innerHTML = '<tr><td colspan="8" class="loading">尚無訊號</td></tr>';
+  }
+}
+
+function renderSignalTable() {
+  const tb = document.getElementById('signal-body');
+  const sorted = [...dashSignals].sort((a, b) => {
+    let valA, valB;
+    if (sortState.key === 'm') { valA = a.factor_scores?.momentum || 0; valB = b.factor_scores?.momentum || 0; }
+    else if (sortState.key === 'v') { valA = a.factor_scores?.value || 0; valB = b.factor_scores?.value || 0; }
+    else if (sortState.key === 'q') { valA = a.factor_scores?.quality || 0; valB = b.factor_scores?.quality || 0; }
+    else if (sortState.key === 'g') { valA = a.factor_scores?.growth || 0; valB = b.factor_scores?.growth || 0; }
+    else { valA = a[sortState.key]; valB = b[sortState.key]; }
+    
+    if (typeof valA === 'string') return sortState.asc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+    return sortState.asc ? valA - valB : valB - valA;
+  });
+
+  tb.innerHTML = sorted.map(item => `
+    <tr onclick="openStock('${item.stock_id}')">
+      <td class="clickable">${item.stock_id}</td>
+      <td>${item.name || '-'}</td>
+      <td>${item.score.toFixed(4)}</td>
+      <td>#${item.rank}</td>
+      <td>${item.factor_scores?.momentum?.toFixed(2) || '-'}</td>
+      <td>${item.factor_scores?.value?.toFixed(2) || '-'}</td>
+      <td>${item.factor_scores?.quality?.toFixed(2) || '-'}</td>
+      <td>${item.factor_scores?.growth?.toFixed(2) || '-'}</td>
+    </tr>
+  `).join('');
+}
+
+function sortSignals(key) {
+  if (sortState.key === key) sortState.asc = !sortState.asc;
+  else { sortState.key = key; sortState.asc = true; }
+  renderSignalTable();
 }
 
 const STRAT_LABELS = {

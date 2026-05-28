@@ -121,7 +121,7 @@ def run_backtest(
 
 
 def _save_backtest(db, run_id: str, metrics: dict):
-    with db.connection() as conn:
+    with db.connection(read_only=False) as conn:
         conn.execute(
             """INSERT INTO backtest_runs
                (run_id, run_at, start_date, end_date, strategy_config,
@@ -139,7 +139,7 @@ def _save_backtest(db, run_id: str, metrics: dict):
 def _save_trades(db, trades: list[dict]):
     if not trades:
         return
-    with db.connection() as conn:
+    with db.connection(read_only=False) as conn:
         for t in trades:
             conn.execute(
                 """INSERT INTO backtest_positions
@@ -164,7 +164,7 @@ def _save_equity(db, run_id: str, portfolio_values: list[tuple[date, Decimal]], 
     
     # Calculate drawdown curve
     peak = 0.0
-    with db.connection() as conn:
+    with db.connection(read_only=False) as conn:
         for i, (d, val) in enumerate(portfolio_values):
             v = float(val)
             if v > peak:

@@ -791,53 +791,90 @@ export default function Strategy() {
         </div>
         {corrMatrix && (
           <div className={styles.corrSection}>
-            <h3>因子相關性矩陣 Factor Correlation</h3>
-            <p className={styles.hint}>Pearson 相關係數。{'>'}0.5 高度正相關，{'<'} -0.2 負相關，接近 0 表示低相關</p>
-            <div className={styles.corrGrid}>
-              <div className={styles.corrRow}>
-                <div className={styles.corrLabel}></div>
-                {STRATEGY_NAMES.map(s => (
-                  <div key={s} className={styles.corrHeader} style={{ color: STRATEGY_COLORS[s] }}>{STRATEGY_CN[s]}</div>
+            <div className={styles.corrCard}>
+              <div className={styles.corrHeaderRow}>
+                <h3>因子相關性矩陣 Factor Correlation</h3>
+                <div className={styles.corrLegend}>
+                  <span className={styles.legendItem}><span className={styles.legendBox} style={{ background: '#ea580c' }}></span> 正相關</span>
+                  <span className={styles.legendItem}><span className={styles.legendBox} style={{ background: '#525252' }}></span> 低相關</span>
+                  <span className={styles.legendItem}><span className={styles.legendBox} style={{ background: '#059669' }}></span> 負相關</span>
+                </div>
+              </div>
+              <p className={styles.hint}>Pearson 相關係數（近一年）。值介於 -1 到 1 之間。</p>
+              
+              <div className={styles.corrGrid}>
+                <div className={styles.corrRow}>
+                  <div className={styles.corrLabel}></div>
+                  {STRATEGY_NAMES.map(s => (
+                    <div key={s} className={styles.corrHeader} style={{ color: STRATEGY_COLORS[s] }}>
+                      {STRATEGY_CN[s]}
+                    </div>
+                  ))}
+                </div>
+                {STRATEGY_NAMES.map(s1 => (
+                  <div key={s1} className={styles.corrRow}>
+                    <div className={styles.corrLabel} style={{ color: STRATEGY_COLORS[s1] }}>
+                      {STRATEGY_CN[s1]}
+                    </div>
+                    {STRATEGY_NAMES.map(s2 => {
+                      const v = corrMatrix[s1]?.[s2] ?? 0;
+                      const absV = Math.abs(v);
+                      // Diagonal is always 1.0 (self-correlation)
+                      const isSelf = s1 === s2;
+                      
+                      const bg = isSelf ? 'var(--color-accent)' :
+                        v > 0.5 ? '#ea580c' : 
+                        v > 0.2 ? '#f97316' : 
+                        v < -0.2 ? '#059669' : '#525252';
+                        
+                      const textColor = (isSelf || absV > 0.2) ? '#fff' : 'var(--text-secondary)';
+                      const displayVal = isSelf ? '1.00' : v.toFixed(2);
+                      
+                      return (
+                        <div key={s2} className={styles.corrCell}
+                          style={{ background: bg, color: textColor }}
+                          title={`${STRATEGY_CN[s1]} 與 ${STRATEGY_CN[s2]} 的相關性: ${v.toFixed(4)}`}>
+                          {displayVal}
+                        </div>
+                      );
+                    })}
+                  </div>
                 ))}
               </div>
-              {STRATEGY_NAMES.map(s1 => (
-                <div key={s1} className={styles.corrRow}>
-                  <div className={styles.corrLabel} style={{ color: STRATEGY_COLORS[s1] }}>{STRATEGY_CN[s1]}</div>
-                  {STRATEGY_NAMES.map(s2 => {
-                    const v = corrMatrix[s1]?.[s2] ?? 0;
-                    const bg = s1 === s2 ? 'var(--color-accent)' :
-                      v > 0.5 ? '#ea580c' : v > 0.2 ? '#f97316' : v > -0.2 ? '#525252' : '#059669';
-                    const textColor = v > 0.2 || s1 === s2 ? '#fff' : 'var(--text-primary)';
-                    return (
-                      <div key={s2} className={styles.corrCell}
-                        style={{ background: bg, color: textColor }}
-                        title={`${STRATEGY_CN[s1]} vs ${STRATEGY_CN[s2]}: ${formatNumber(v, { type: 'percent' })}`}>
-                        {formatNumber(v, { type: 'percent' })}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-            <p className={styles.corrAdvice}>
-              {(() => {
-                const pairs: { s1: string; s2: string; v: number }[] = [];
-                for (const s1 of STRATEGY_NAMES) {
-                  for (const s2 of STRATEGY_NAMES) {
-                    if (s1 < s2) pairs.push({ s1, s2, v: corrMatrix[s1]?.[s2] ?? 0 });
+              
+              <div className={styles.corrAdvice}>
+                {(() => {
+                  const pairs: { s1: string; s2: string; v: number }[] = [];
+                  for (const s1 of STRATEGY_NAMES) {
+                    for (const s2 of STRATEGY_NAMES) {
+                      if (s1 < s2) pairs.push({ s1, s2, v: corrMatrix[s1]?.[s2] ?? 0 });
+                    }
                   }
-                }
-                const high = pairs.filter(p => Math.abs(p.v) > 0.5);
-                const low = pairs.filter(p => Math.abs(p.v) < 0.2);
-                if (high.length > 0) {
-                  return `⚠️ ${high.map(p => `${STRATEGY_CN[p.s1]}-${STRATEGY_CN[p.s2]}`).join('、')} 高度相關，建議減少重複配置`;
-                }
-                if (low.length > 0) {
-                  return `✅ ${low.map(p => `${STRATEGY_CN[p.s1]}-${STRATEGY_CN[p.s2]}`).join('、')} 低度相關，分散效果良好`;
-                }
-                return '各因子間相關性適中，配置尚可';
-              })()}
-            </p>
+                  const high = pairs.filter(p => Math.abs(p.v) > 0.5);
+                  const low = pairs.filter(p => Math.abs(p.v) < 0.2);
+                  
+                  return (
+                    <>
+                      {high.length > 0 && (
+                        <div className={styles.adviceItem}>
+                          <span className={styles.adviceIcon}>⚠️</span>
+                          <span><strong>{high.map(p => `${STRATEGY_CN[p.s1]}-${STRATEGY_CN[p.s2]}`).join('、')}</strong> 相關性較高，配置時權重建議分散。</span>
+                        </div>
+                      )}
+                      {low.length > 0 && (
+                        <div className={styles.adviceItem}>
+                          <span className={styles.adviceIcon}>✅</span>
+                          <span><strong>{low.map(p => `${STRATEGY_CN[p.s1]}-${STRATEGY_CN[p.s2]}`).join('、')}</strong> 低度相關，組合分散效果佳。</span>
+                        </div>
+                      )}
+                      {high.length === 0 && low.length === 0 && (
+                        <div className={styles.adviceItem}>各因子間相關性適中。</div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
           </div>
         )}
         {zeroWarn && (
