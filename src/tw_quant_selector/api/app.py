@@ -24,6 +24,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 db = Database()
+db.init_db()
 
 
 def api_response(data: Any, meta: dict[str, Any] | None = None, error: dict[str, Any] | None = None) -> dict:
@@ -721,7 +722,7 @@ def config_history(limit: int = 10, offset: int = 0):
         """SELECT * FROM strategy_config_history ORDER BY changed_at DESC LIMIT ? OFFSET ?""",
         [limit, offset],
     ).fetchall()
-    cols = [desc[0] for desc in db.description]
+    cols = [desc[1] for desc in db.execute("PRAGMA table_info(\"strategy_config_history\")").fetchall()]
     return api_response([dict(zip(cols, r)) for r in rows])
 
 

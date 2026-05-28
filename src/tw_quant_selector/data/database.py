@@ -97,8 +97,9 @@ CREATE TABLE IF NOT EXISTS guru_scores (
     PRIMARY KEY (score_date, stock_id, guru)
 );
 
+CREATE SEQUENCE IF NOT EXISTS seq_strategy_config_history_id;
 CREATE TABLE IF NOT EXISTS strategy_config_history (
-    config_id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    config_id       INTEGER DEFAULT nextval('seq_strategy_config_history_id') PRIMARY KEY,
     changed_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     weights         JSON,
     advanced_params JSON,
@@ -159,6 +160,15 @@ CREATE TABLE IF NOT EXISTS ingestion_tracker (
     last_status     VARCHAR,
     error_msg       VARCHAR,
     PRIMARY KEY (stock_id, dataset)
+);
+
+CREATE SEQUENCE IF NOT EXISTS seq_operation_logs_id;
+CREATE TABLE IF NOT EXISTS operation_logs (
+    id          VARCHAR PRIMARY KEY DEFAULT 'log_' || nextval('seq_operation_logs_id'),
+    module      VARCHAR NOT NULL,
+    event       VARCHAR NOT NULL,
+    severity    VARCHAR NOT NULL,
+    created_at  TIMESTAMP DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS alert_log (

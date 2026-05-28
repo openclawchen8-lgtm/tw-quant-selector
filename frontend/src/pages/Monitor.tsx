@@ -40,7 +40,7 @@ export default function Monitor() {
 
   const lastPriceDate = dash?.price_date_range?.max;
   const hoursSinceUpdate = lastPriceDate
-    ? (Date.now() - new Date(lastPriceDate).getTime()) / 3_600_000
+    ? (Date.now() - new Date(lastPriceDate + 'T00:00:00+08:00').getTime()) / 3_600_000
     : Infinity;
 
   let health: HealthLevel = 'offline';
@@ -78,9 +78,9 @@ export default function Monitor() {
   }
 
   const statusLabel = (s: string) =>
-    s === 'done' || s === 'completed' ? '✓ 完成' : s === 'running' ? '⟳ 執行中' : s === 'error' ? '✗ 錯誤' : s === 'pending' ? '⏳ 待執行' : '—';
+    s === 'done' || s === 'completed' ? '✓ 完成' : s === 'running' ? '⟳ 執行中' : s === 'error' ? '✗ 錯誤' : s === 'pending' ? '⏳ 待執行' : s === 'failed' ? '✗ 失敗' : s === 'skipped' ? '⊘ 跳過' : '—';
   const statusClass = (s: string) =>
-    s === 'done' || s === 'completed' ? styles.ok : s === 'running' ? styles.running : s === 'error' ? styles.err : '';
+    s === 'done' || s === 'completed' ? styles.ok : s === 'running' ? styles.running : s === 'error' || s === 'failed' ? styles.err : '';
 
   const missing = datasets
     .filter((d) => d.status === 'error' || d.count === 0)
@@ -116,17 +116,33 @@ export default function Monitor() {
             </tr>
           </thead>
           <tbody>
-            {dash.tracker.map((ds) => (
-              <tr key={ds.dataset} className={styles.dataRow}>
-                <td className={styles.datasetName}>{ds.dataset}</td>
-                <td data-type="number">{formatNumber(ds.count || 0, { type: 'volume' }).replace('萬張', '')}</td>
-                <td className={ds.count === 0 ? styles.stale : ''}>
-                  {lastPriceDate ? lastPriceDate.slice(0, 10) : '—'}
+            {Object.entries(
+              datasets.reduce<Record<string, { count: number; last_updated: string | null; statuses: string[] }>>((acc, ds) => {
+                if (!acc[ds.dataset]) acc[ds.dataset] = { count: 0, last_updated: null, statuses: [] };
+                acc[ds.dataset].count += ds.count;
+                if (ds.last_updated && (!acc[ds.dataset].last_updated || ds.last_updated > acc[ds.dataset].last_updated)) {
+                  acc[ds.dataset].last_updated = ds.last_updated;
+                }
+                if (ds.status && !acc[ds.dataset].statuses.includes(ds.status)) {
+                  acc[ds.dataset].statuses.push(ds.status);
+                }
+                return acc;
+              }, {})
+            ).map(([name, { count, last_updated, statuses }]) => (
+              <tr key={name} className={styles.dataRow}>
+                <td className={styles.datasetName}>{name}</td>
+                <td data-type="number">{count}</td>
+                <td className={count === 0 ? styles.stale : ''}>
+                  {last_updated ?? '—'}
                 </td>
                 <td>
-                  <span className={`${styles.statusDot} ${statusClass(ds.status)}`}>
-                    {statusLabel(ds.status)}
-                  </span>
+                  {statuses.length === 0 ? (
+                    <span className={`${styles.statusDot} `}>—</span>
+                  ) : statuses.map((s) => (
+                    <span key={s} className={`${styles.statusDot} ${statusClass(s)}`}>
+                      {statusLabel(s)}
+                    </span>
+                  ))}
                 </td>
               </tr>
             ))}

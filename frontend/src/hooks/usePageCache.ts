@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react';
+import { useCallback } from 'react';
 
 const CACHE_PREFIX = 'tw_quant_page_cache_';
 

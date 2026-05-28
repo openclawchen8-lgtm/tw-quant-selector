@@ -54,6 +54,7 @@ class FinMindClient:
     def _request(self, dataset: str, params: dict[str, Any] | None = None) -> list[dict]:
         if self._check_banned():
             return []
+        self._check_rate_limit()
         params = {"dataset": dataset, **(params or {})}
         for attempt in range(2):
             try:
@@ -79,19 +80,20 @@ class FinMindClient:
                     readable = f"{detail} (~{retry_after//60}min, 預計 {eta_str} 恢復)"
                 else:
                     readable = detail
-                if status in (400, 402, 403, 404):
-                    if status == 403 and retry_after > 0:
+                if status == 402:
+                    wait_sec = retry_after if retry_after > 0 else 60
+                    self._banned_until = datetime.now() + timedelta(seconds=wait_sec)
+                    self._banned_logged = datetime.now().timestamp()
+                    log.error("finmind.rate_limited_402", dataset=dataset, wait_sec=wait_sec,
+                               msg=readable, retry_after=wait_sec)
+                    log.error("FinMind 402 rate limited, backing off {wait_sec}s", wait_sec=wait_sec)
+                    return []  # stop retrying this dataset, move to next
+                if status in (400, 403, 404):
+                    if retry_after > 0:
                         self._banned_until = datetime.now() + timedelta(seconds=retry_after)
                         self._banned_logged = datetime.now().timestamp()
                     log.warning("finmind.skipped", dataset=dataset, status=status,
                                 msg=readable, retry_after=retry_after)
-                    return []
-                if attempt == 0:
-                    wait = 2 ** attempt
-                    log.warning("finmind.retry", dataset=dataset, attempt=attempt, wait=wait)
-                    time.sleep(wait)
-                else:
-                    log.error("finmind.failed", dataset=dataset, error=str(e))
                     return []
             except (httpx.TimeoutException, httpx.TransportError) as e:
                 if attempt == 0:
