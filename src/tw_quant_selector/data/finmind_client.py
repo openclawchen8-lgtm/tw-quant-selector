@@ -25,6 +25,21 @@ class FinMindClient:
         self._banned_until: datetime | None = None
         self._banned_logged: float = 0
 
+    def _check_banned(self) -> bool:
+        """Check if currently banned from rate limiting. Returns True if banned."""
+        if self._banned_until is None:
+            return False
+        if datetime.now() >= self._banned_until:
+            self._banned_until = None
+            return False
+        # Log once per minute when banned
+        now_ts = time.time()
+        if now_ts - self._banned_logged > 60:
+            remaining = (self._banned_until - datetime.now()).total_seconds()
+            log.warning("finmind.banned", remaining_sec=int(remaining))
+            self._banned_logged = now_ts
+        return True
+
     def _check_rate_limit(self):
         now = datetime.now()
         # Hourly reset

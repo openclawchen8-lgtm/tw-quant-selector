@@ -504,6 +504,58 @@ pytest tests/test_strategies.py -v
 
 ---
 
+## 每日資料流程 (run_daily_pipeline.py)
+
+`scripts/run_daily_pipeline.py` 是每日完整流程的單一入口：同步股票清單 → 攝取資料 → 計算評分。
+
+```bash
+FINMIND_TOKEN=xxx python scripts/run_daily_pipeline.py [DATE] [--scope TWSE|TPEX|ALL]
+```
+
+| 參數 | 說明 |
+|------|------|
+| `DATE` | 執行日期，格式 `YYYY-MM-DD`（預設：今天） |
+| `--scope` | 股票市場範圍（預設：`TWSE`，可用 `TPEX` 或 `ALL`） |
+
+### 市場範圍 (scope)
+
+| scope | 說明 | 資料筆數 |
+|-------|------|---------|
+| `TWSE` | 僅上市（預設） | ~1,361 檔 |
+| `TPEX` | 僅上櫃 | ~10,506 檔 |
+| `ALL` | TWSE + TPEX | ~11,867 檔 |
+
+### 使用範例
+
+```bash
+# 預設（僅上市市場）
+FINMIND_TOKEN=xxx python scripts/run_daily_pipeline.py
+
+# 指定日期 + 上櫃市場
+FINMIND_TOKEN=xxx python scripts/run_daily_pipeline.py 2026-05-28 --scope TPEX
+
+# 全部市場
+FINMIND_TOKEN=xxx python scripts/run_daily_pipeline.py --scope ALL
+
+# 或用環境變數設定預設 scope
+STOCK_MARKET_SCOPE=ALL FINMIND_TOKEN=xxx python scripts/run_daily_pipeline.py
+```
+
+### 流程步驟
+
+1. **Step 0：同步股票清單** — 從 TWSE/TPEX API 取得最新上市櫃股票列表，寫入 `stocks` 表
+2. **Step 1：攝取資料** — 對當日批次股票下載股價 (price)、本益比 (per)、月營收 (revenue)、財報 (financials)
+3. **Step 2：計算評分** — 執行 `compute_composite_scores()`，產生訊號寫入 `signals` 表
+
+### 市場說明
+
+| 市場 | API 端點 | 說明 |
+|------|---------|------|
+| TWSE（上市） | `https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL` | 含所有上市 ETF 與個股 |
+| TPEX（上櫃） | `https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes` | 含所有上櫃 ETF 與個股 |
+
+---
+
 ## 排程與輪詢
 
 ### 背景排程器

@@ -228,6 +228,13 @@ class Database:
             return self._local.conn
 
         # For write access, open a new connection with retries
+        # IMPORTANT: DuckDB doesn't allow mixed read_only/write connections to same file.
+        # Close any existing read-only connection first before opening write connection.
+        if hasattr(self._local, "conn") and self._local.conn is not None:
+            try: self._local.conn.close()
+            except: pass
+            self._local.conn = None
+
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         for i in range(10):
             try:

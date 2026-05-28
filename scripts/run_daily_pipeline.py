@@ -1,12 +1,4 @@
-#!/usr/bin/env python3
-"""
-Daily pipeline: fetch data → compute scores → select top stocks/ETFs.
-Run after rate limit resets (e.g. every weekday).
-
-Usage:
-    FINMIND_TOKEN=xxx python scripts/run_daily_pipeline.py
-    FINMIND_TOKEN=xxx python scripts/run_daily_pipeline.py 2026-05-26
-"""
+import argparse
 import os, sys
 from datetime import date
 
@@ -14,24 +6,33 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from tw_quant_selector.data.database import Database
 from tw_quant_selector.data.finmind_client import FinMindClient
 from tw_quant_selector.data.scheduler import run_daily_update
-from tw_quant_selector.data.twse_client import update_stock_list
+from tw_quant_selector.data.twse_client import update_stock_list, MarketScope
 from tw_quant_selector.strategies.combiner import compute_composite_scores
+
+parser = argparse.ArgumentParser(description="Daily pipeline")
+parser.add_argument("run_date", nargs="?", help="Date in YYYY-MM-DD (default: today)")
+parser.add_argument(
+    "--scope",
+    choices=["TWSE", "TPEX", "ALL"],
+    default=os.environ.get("STOCK_MARKET_SCOPE", "TWSE").upper(),
+    help="Stock market scope (default: STOCK_MARKET_SCOPE env or TWSE)",
+)
+parser.add_argument("token", nargs="?", help="FinMind API token (or set FINMIND_TOKEN env)")
+args = parser.parse_args()
 
 DB_PATH = os.environ.get("DUCKDB_PATH", str(os.path.join(
     os.path.dirname(__file__), "..", "data", "tw_quant.duckdb"
 )))
 
-token = os.environ.get("FINMIND_TOKEN", "")
-if not token and len(sys.argv) > 1:
-    token = sys.argv[1]
+token = args.token or os.environ.get("FINMIND_TOKEN", "")
 if not token:
-    print("Usage: FINMIND_TOKEN=xxx python scripts/run_daily_pipeline.py [DATE]")
+    print("Usage: FINMIND_TOKEN=xxx python scripts/run_daily_pipeline.py [DATE] [--scope TWSE|TPEX|ALL]")
     sys.exit(1)
 
 run_date = date.today()
-if len(sys.argv) > 1:
+if args.run_date:
     try:
-        run_date = date.fromisoformat(sys.argv[1])
+        run_date = date.fromisoformat(args.run_date)
     except ValueError:
         pass
 
@@ -39,8 +40,8 @@ db = Database(DB_PATH)
 db.init_db()
 client = FinMindClient(token)
 
-print(f"📋 Step 0: Sync stock list from TWSE/TPEX")
-n_stocks = update_stock_list(db)
+print(f"📋 Step 0: Sync stock list (scope={args.scope}) from TWSE/TPEX")
+n_stocks = update_stock_list(db, scope=args.scope)
 print(f"  {n_stocks} stocks in DB")
 
 print(f"🏭 Step 1: Ingest data for {run_date}")
