@@ -16,7 +16,7 @@ log = structlog.get_logger()
 
 DATASETS = ["price", "per", "revenue", "financials"]
 
-_FINMIND_VALID_ID = re.compile(r"^\d{4}$|^00\d{3,4}$|^\d{6}$")
+_FINMIND_VALID_ID = re.compile(r"^\d{4}$|^00\d{3,4}$|^\d{5}[A-Z]?$|^\d{4}[A-Z]\d{0,2}$|^\d{6}[A-Z]?$")
 
 
 def is_finmind_valid(stock_id: str) -> bool:
