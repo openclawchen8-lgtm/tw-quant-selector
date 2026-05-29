@@ -28,6 +28,26 @@ export function fetchStockDetail(stockId: string) {
   return request(`/api/v1/stock/${stockId}`);
 }
 
+export function fetchSignalCalendar(): Promise<string[]> {
+  return request<string[]>('/api/v1/signals/calendar');
+}
+
+export function fetchSignalsByDate(date: string, strategy = 'composite', includeEtf = true) {
+  return request(`/api/v1/signals/${date}?strategy=${encodeURIComponent(strategy)}&include_etf=${includeEtf}`);
+}
+
+export interface FactorHistoryPoint {
+  date: string;
+  momentum: number | null;
+  value: number | null;
+  quality: number | null;
+  growth: number | null;
+}
+
+export function fetchFactorHistory(stockId: string): Promise<FactorHistoryPoint[]> {
+  return request<FactorHistoryPoint[]>(`/api/v1/stock/${stockId}/factor-history`);
+}
+
 export function fetchStrategyConfig() {
   return request('/api/v1/strategies/config');
 }
@@ -76,4 +96,54 @@ export interface EquityPoint {
 
 export function fetchBacktestEquity(runId: string): Promise<EquityPoint[]> {
   return request<EquityPoint[]>(`/api/v1/backtest/${runId}/equity`);
+}
+
+export interface BacktestTrade {
+  date: string;
+  stock_id: string;
+  action: string;
+  shares: number;
+  price: number | null;
+  value: number | null;
+  weight: number | null;
+}
+
+export interface BacktestDetail {
+  run_id: string;
+  created_at: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  metrics: {
+    total_return: number | null;
+    cagr: number | null;
+    sharpe: number | null;
+    max_drawdown: number | null;
+    calmar: number | null;
+    turnover: number | null;
+    total_trades: number;
+  };
+  trades: BacktestTrade[];
+}
+
+export function fetchBacktestDetail(runId: string): Promise<BacktestDetail> {
+  return request<BacktestDetail>(`/api/v1/backtest/${runId}/detail`);
+}
+
+export interface DatasetStatus {
+  name: string;
+  status: string;
+  count: number;
+  last_updated: string | null;
+}
+
+export interface DataStatus {
+  last_price_update: string | null;
+  stock_count: number;
+  signal_dates: number;
+  latest_signal_date: string | null;
+  datasets: DatasetStatus[];
+}
+
+export function fetchDataStatus(): Promise<DataStatus> {
+  return request<DataStatus>('/api/v1/data/status');
 }

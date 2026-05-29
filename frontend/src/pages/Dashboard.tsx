@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchLatestSignals } from '../api/client';
+import { fetchLatestSignals, fetchDataStatus, type DataStatus } from '../api/client';
 import { usePageCache } from '../hooks/usePageCache';
 import BaseTable from '../components/BaseTable';
 import StatCard from '../components/StatCard';
@@ -37,6 +37,7 @@ export default function Dashboard() {
   const [signals, setSignals] = useState<SignalsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [dataStatus, setDataStatus] = useState<DataStatus | null>(null);
   const { addToast } = useToast();
 
   const { getCached, setCached } = usePageCache<SignalsData>('dashboard');
@@ -66,6 +67,7 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { fetchDataStatus().then(setDataStatus).catch(() => {}); }, []);
 
   const today = new Date();
   const weekday = ['日', '一', '二', '三', '四', '五', '六'][today.getDay()];
@@ -259,23 +261,36 @@ export default function Dashboard() {
           </div>
         </div>
         <div className={styles.panel}>
-          <h3>本週換股異動</h3>
-          <div className={styles.changeList}>
-            <div className={styles.changeItem}>
-              <span className={styles.changeBuy}>+ 買入</span>
-              <span>3 檔</span>
+          <h3>資料狀態 Data Status</h3>
+          {dataStatus ? (
+            <div className={styles.datasetList}>
+              <div className={styles.datasetRow}>
+                <span className={styles.datasetLabel}>價量</span>
+                <span className={styles.datasetCount}>{dataStatus.stock_count} 檔</span>
+                <span className={styles.datasetDate}>{dataStatus.last_price_update || '—'}</span>
+                <span className={styles.datasetStatus}>{dataStatus.last_price_update ? '🟢' : '🔴'}</span>
+              </div>
+              <div className={styles.datasetRow}>
+                <span className={styles.datasetLabel}>訊號</span>
+                <span className={styles.datasetCount}>{dataStatus.signal_dates} 天</span>
+                <span className={styles.datasetDate}>{dataStatus.latest_signal_date || '—'}</span>
+                <span className={styles.datasetStatus}>{dataStatus.signal_dates > 0 ? '🟢' : '🔴'}</span>
+              </div>
+              {dataStatus.datasets.map((ds) => (
+                <div key={ds.name} className={styles.datasetRow}>
+                  <span className={styles.datasetLabel}>{ds.name}</span>
+                  <span className={styles.datasetCount}>{ds.count} 筆</span>
+                  <span className={styles.datasetDate}>{ds.last_updated?.slice(0, 10) || '—'}</span>
+                  <span className={styles.datasetStatus}>
+                    {ds.status === 'ok' ? '🟢' : ds.status === 'failed' ? '🔴' : '🟡'}
+                  </span>
+                </div>
+              ))}
             </div>
-            <div className={styles.changeItems}>
-              2330 台積電、2454 聯發科、2317 鴻海
-            </div>
-            <div className={styles.changeItem}>
-              <span className={styles.changeSell}>- 賣出</span>
-              <span>3 檔</span>
-            </div>
-            <div className={styles.changeItems}>
-              2308 台達電、2881 富邦金、2412 中華電
-            </div>
-          </div>
+          ) : (
+            <p className={styles.muted}>載入中⋯</p>
+          )}
+          <a href="/monitor" className={styles.monitorLink}>查看完整監控 →</a>
         </div>
       </div>
     </div>

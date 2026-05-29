@@ -195,11 +195,21 @@ import structlog
 log = structlog.get_logger()
 
 class Database:
+    _all_ro_conns: set[duckdb.DuckDBPyConnection] = set()
+    _ro_lock = threading.Lock()
+
     def __init__(self, db_path: str | None = None, read_only: bool = False):
         self.db_path = db_path or os.getenv("DUCKDB_PATH", str(Path.cwd() / "data" / "tw_quant.duckdb"))
         self.read_only = read_only
         self._local = threading.local()
         self._memory_conn: duckdb.DuckDBPyConnection | None = None
+
+    def _close_all_ro(self):
+        with self._ro_lock:
+            for conn in list(self._all_ro_conns):
+                try: conn.close()
+                except: pass
+            self._all_ro_conns.clear()
 
     def connect(self, read_only: bool | None = None) -> duckdb.DuckDBPyConnection:
         if read_only is None:
@@ -222,18 +232,17 @@ class Database:
 
         if read_only:
             # Use thread-local connection for read-only to ensure stability
-            if not hasattr(self._local, "conn") or self._local.conn is None:
+            cached = getattr(self._local, "conn", None)
+            if cached is None or cached.closed:
                 Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
-                self._local.conn = duckdb.connect(self.db_path, read_only=True)
+                conn = duckdb.connect(self.db_path, read_only=True)
+                with self._ro_lock:
+                    self._all_ro_conns.add(conn)
+                self._local.conn = conn
             return self._local.conn
 
-        # For write access, open a new connection with retries
-        # IMPORTANT: DuckDB doesn't allow mixed read_only/write connections to same file.
-        # Close any existing read-only connection first before opening write connection.
-        if hasattr(self._local, "conn") and self._local.conn is not None:
-            try: self._local.conn.close()
-            except: pass
-            self._local.conn = None
+        # For write access, close ALL read-only connections first
+        self._close_all_ro()
 
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         for i in range(10):
@@ -250,10 +259,8 @@ class Database:
             try: self._memory_conn.close()
             except: pass
             self._memory_conn = None
-        if hasattr(self._local, "conn") and self._local.conn is not None:
-            try: self._local.conn.close()
-            except: pass
-            self._local.conn = None
+        self._close_all_ro()
+        self._local.conn = None
 
     @contextmanager
     def connection(self, read_only: bool | None = None):

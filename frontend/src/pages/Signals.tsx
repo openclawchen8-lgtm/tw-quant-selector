@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { fetchLatestSignals } from '../api/client';
+import { fetchSignalCalendar, fetchSignalsByDate } from '../api/client';
 import BaseTable from '../components/BaseTable';
 import FactorMiniBar from '../components/FactorMiniBar';
+import Tooltip from '../components/Tooltip';
 import ExportModal from '../components/ExportModal';
 import EmptyState from '../components/EmptyState';
 import MissingDataSummary from '../components/MissingDataSummary';
@@ -31,44 +32,75 @@ export default function Signals() {
   const [data, setData] = useState<{ date: string; stocks: SignalItem[]; etfs: SignalItem[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [dates, setDates] = useState<string[]>([]);
+  const [calLoading, setCalLoading] = useState(true);
   const sortKey = searchParams.get('sort') || 'score';
   const sortDir = (searchParams.get('dir') as 'asc' | 'desc') || 'desc';
   const [showEtf, setShowEtf] = useState(searchParams.get('etf') !== '0');
   const [expandedRow, setExpandedRow] = useState<string | null>(searchParams.get('stock'));
   const [strategy, setStrategy] = useState(searchParams.get('strategy') || 'composite');
+  const [selectedDate, setSelectedDate] = useState(searchParams.get('date') || '');
   const { addToast } = useToast();
   const [showExport, setShowExport] = useState(false);
   const [exporting, setExporting] = useState(false);
 
+  const dateSet = useMemo(() => new Set(dates), [dates]);
+  const minDate = dates.length ? dates[dates.length - 1] : '';
+  const maxDate = dates.length ? dates[0] : '';
+
   useEffect(() => {
+    fetchSignalCalendar().then((d) => {
+      setDates(d);
+      setCalLoading(false);
+      const urlDate = searchParams.get('date');
+      if (urlDate && d.includes(urlDate)) {
+        setSelectedDate(urlDate);
+      } else if (!selectedDate) {
+        setSelectedDate(d[0] || '');
+      }
+    }).catch(() => setCalLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (!selectedDate) return;
     setLoading(true);
     setError(null);
-    fetchLatestSignals(strategy, true)
+    fetchSignalsByDate(selectedDate, strategy, true)
       .then((d: any) => { setData(d); setLoading(false); })
       .catch((e: Error) => { setData(null); setError(e.message); setLoading(false); });
-  }, [strategy]);
+  }, [selectedDate, strategy]);
 
   useEffect(() => {
     setSearchParams(prev => {
       prev.set('sort', sortKey);
       prev.set('dir', sortDir);
       prev.set('strategy', strategy);
+      if (selectedDate) prev.set('date', selectedDate);
       if (showEtf) prev.delete('etf'); else prev.set('etf', '0');
       if (expandedRow) prev.set('stock', expandedRow); else prev.delete('stock');
       return prev;
     }, { replace: true });
-  }, [sortKey, sortDir, strategy, showEtf, expandedRow]);
+  }, [sortKey, sortDir, strategy, showEtf, expandedRow, selectedDate]);
+
+  const goPrevDay = () => {
+    const idx = dates.indexOf(selectedDate);
+    if (idx < dates.length - 1) setSelectedDate(dates[idx + 1]);
+  };
+  const goNextDay = () => {
+    const idx = dates.indexOf(selectedDate);
+    if (idx > 0) setSelectedDate(dates[idx - 1]);
+  };
+  const idx = dates.indexOf(selectedDate);
+  const hasPrev = idx < dates.length - 1;
+  const hasNext = idx > 0;
 
   const allItems = [...(data?.stocks || []), ...(showEtf ? data?.etfs || [] : [])];
 
   const etfIds = new Set(data?.etfs?.map((e) => e.stock_id) || []);
-  const displayData = allItems;
-
-  const today = data?.date || new Date().toISOString().slice(0, 10);
 
   const handleExport = async (format: 'csv' | 'json', _columns: string[]) => {
     setExporting(true);
-    const dateStr = today.replace(/-/g, '');
+    const dateStr = (data?.date || selectedDate).replace(/-/g, '');
     const url = `http://localhost:8000/api/v1/signals/export.${format}${format === 'csv' ? '' : '?'}`;
     try {
       const res = await fetch(url);
@@ -93,9 +125,16 @@ export default function Signals() {
     return map[s] || s;
   };
 
+  const FACTOR_TOOLTIPS: Record<string, string> = {
+    momentum: '動能因子：近 3、6、12 個月累計報酬率加權，高者代表近期表現強勢',
+    value: '價值因子：本益比、淨值比、殖利率綜合評分，低本益比/高殖利率者分數高',
+    quality: '品質因子：ROE、毛利率、負債比綜合評估，高獲利能力且低負債者分數高',
+    growth: '成長因子：營收年增率與 EPS 年增率加權，雙成長者分數高',
+  };
+
   const makeFactorCol = (key: string, label: string, fallbackMul = 1): ColumnDef<SignalItem, any> => ({
     id: key,
-    header: label,
+    header: () => <Tooltip content={FACTOR_TOOLTIPS[key]}>{label}</Tooltip>,
     accessorFn: (row: SignalItem) => row.factor_scores?.[key] ?? row.score * fallbackMul,
     meta: { width: 100, align: 'right' as const },
     cell: ({ row }) => <FactorMiniBar name={key} score={row.original.factor_scores?.[key] ?? row.original.score * fallbackMul} />,
@@ -197,7 +236,22 @@ export default function Signals() {
       <div className={styles.header}>
         <h1 className={styles.title}>選股訊號 Signals</h1>
         <div className={styles.headerMeta}>
-          <input type="date" value={today} className={styles.datePicker} readOnly />
+          <div className={styles.dateNav}>
+            <button className={styles.navBtn} onClick={goPrevDay} disabled={!hasPrev || calLoading} title="前一天">◀</button>
+            <input
+              type="date"
+              value={selectedDate}
+              min={minDate}
+              max={maxDate}
+              onChange={(e) => { if (dateSet.has(e.target.value)) setSelectedDate(e.target.value); }}
+              className={styles.datePicker}
+              list="signal-dates"
+            />
+            <datalist id="signal-dates">
+              {dates.map((d) => <option key={d} value={d} />)}
+            </datalist>
+            <button className={styles.navBtn} onClick={goNextDay} disabled={!hasNext || calLoading} title="下一天">▶</button>
+          </div>
           <select className={styles.select} value={strategy} onChange={(e) => setStrategy(e.target.value)}>
             <option value="composite">全部策略</option>
             <option value="momentum">動能</option><option value="value">價值</option><option value="quality">品質</option><option value="growth">成長</option>
@@ -214,15 +268,15 @@ export default function Signals() {
 
       {error ? (
         <EmptyState scenario="failed" onRetry={() => window.location.reload()}>
-          <strong>{strategyLabel(strategy)}</strong> 尚無資料 — 請執行排程器或切換策略
+          <strong>{strategyLabel(strategy)}</strong> {data ? '該日無資料' : '尚無資料'} — 請執行排程器或切換日期
         </EmptyState>
       ) : (
         <>
           <BaseTable<SignalItem>
             columns={columns}
-            data={displayData}
+            data={allItems}
             loading={loading}
-            emptyMessage="今日沒有符合條件的選股結果"
+            emptyMessage={selectedDate ? `${selectedDate} 沒有符合條件的選股結果` : '請選擇日期'}
             getRowId={(row) => row.stock_id}
             expandedRow={expandedRow}
             onExpandedChange={(id) => setExpandedRow(id)}
@@ -234,11 +288,11 @@ export default function Signals() {
               return null;
             }}
           />
-          {displayData.length > 0 && (
+          {allItems.length > 0 && (
             <MissingDataSummary missing={{
-              連續天數: displayData.filter(s => s.consecutive_days == null).length,
-              因子分數: displayData.filter(s => !s.factor_scores || Object.keys(s.factor_scores).length === 0).length,
-              排名變動: displayData.filter(s => s.rank_change == null).length,
+              連續天數: allItems.filter(s => s.consecutive_days == null).length,
+              因子分數: allItems.filter(s => !s.factor_scores || Object.keys(s.factor_scores).length === 0).length,
+              排名變動: allItems.filter(s => s.rank_change == null).length,
             }} />
           )}
         </>

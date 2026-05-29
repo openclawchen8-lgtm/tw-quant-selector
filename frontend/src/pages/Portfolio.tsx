@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import EmptyState from '../components/EmptyState';
+import Tooltip from '../components/Tooltip';
 import { useToast } from '../components/Toast';
 import { formatNumber } from '../utils/format';
 import styles from './Portfolio.module.css';
@@ -359,7 +360,9 @@ export default function Portfolio() {
           <div className={styles.configBody}>
             {/* Amount threshold */}
             <div className={styles.configField}>
-              <label className={styles.configLabel} htmlFor={`pl-amt-${configuringStock}`}>金額門檻 (±TWD)</label>
+              <label className={styles.configLabel} htmlFor={`pl-amt-${configuringStock}`}>
+                <Tooltip content="單一持股累計損益達到此金額時觸發通知。留空則套用全域設定或預設值。">金額門檻 (±TWD)</Tooltip>
+              </label>
               <input
                 id={`pl-amt-${configuringStock}`}
                 className={styles.configInput}
@@ -378,7 +381,9 @@ export default function Portfolio() {
 
             {/* Percent threshold */}
             <div className={styles.configField}>
-              <label className={styles.configLabel} htmlFor={`pl-pct-${configuringStock}`}>百分比門檻 (±%)</label>
+              <label className={styles.configLabel} htmlFor={`pl-pct-${configuringStock}`}>
+                <Tooltip content="單一持股損益百分比（相對於成本）達到此值時觸發通知。留空則套用全域設定或預設值。">百分比門檻 (±%)</Tooltip>
+              </label>
               <input
                 id={`pl-pct-${configuringStock}`}
                 className={styles.configInput}

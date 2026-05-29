@@ -337,16 +337,20 @@ def stock_detail(stock_id: str):
 
 
 @app.get("/api/v1/stock/{stock_id}/factor-history")
-def stock_factor_history(stock_id: str):
+def stock_factor_history(stock_id: str, limit: int = 52):
     rows = db.execute(
-        """SELECT signal_date, strategy, score, rank
-           FROM signals WHERE stock_id = ? ORDER BY signal_date DESC LIMIT 52""",
+        """SELECT signal_date, strategy, score
+           FROM signals WHERE stock_id = ? ORDER BY signal_date DESC, strategy""",
         [stock_id]
     ).fetchall()
-    return api_response([{
-        "date": str(r[0]), "strategy": r[1], "score": float(r[2]) if r[2] else None,
-        "rank": r[3] or 0,
-    } for r in rows])
+    pivoted: dict[str, dict[str, float | None]] = {}
+    for r in rows:
+        d = str(r[0])
+        if d not in pivoted:
+            pivoted[d] = {"date": d, "momentum": None, "value": None, "quality": None, "growth": None}
+        pivoted[d][r[1]] = float(r[2]) if r[2] else None
+    result = list(pivoted.values())[:limit]
+    return api_response(result)
 
 
 @app.get("/api/v1/monitor/datasets")
@@ -438,6 +442,12 @@ def get_backtest_detail(run_id: str):
     row = db.execute("SELECT * FROM backtest_runs WHERE run_id = ?", [run_id]).fetchone()
     if not row:
         raise HTTPException(404, "Backtest run not found")
+    trades = db.execute(
+        """SELECT trade_date, stock_id, action, shares, price, value, weight
+           FROM backtest_positions WHERE run_id = ? ORDER BY trade_date, stock_id""",
+        [run_id]
+    ).fetchall()
+    total_trades = len(trades)
     return api_response({
         "run_id": run_id,
         "created_at": str(row[1]) if row[1] else None,
@@ -449,7 +459,18 @@ def get_backtest_detail(run_id: str):
             "sharpe": float(row[8]) if row[8] else None,
             "max_drawdown": float(row[9]) if row[9] else None,
             "calmar": float(row[10]) if row[10] else None,
+            "turnover": float(row[11]) if row[11] else None,
+            "total_trades": total_trades,
         },
+        "trades": [{
+            "date": str(t[0]),
+            "stock_id": t[1],
+            "action": t[2],
+            "shares": t[3] or 0,
+            "price": float(t[4]) if t[4] else None,
+            "value": float(t[5]) if t[5] else None,
+            "weight": float(t[6]) if t[6] else None,
+        } for t in trades],
     })
 
 
@@ -635,11 +656,25 @@ def get_backtest(run_id: str):
 def data_status():
     latest_price = db.execute("SELECT MAX(trade_date) FROM daily_prices").fetchone()
     stock_count = db.execute("SELECT COUNT(*) FROM stocks").fetchone()
+    datasets = db.execute(
+        """SELECT dataset, last_status, COUNT(*) as cnt,
+                  MAX(last_updated) as last_upd, MAX(bucket) as latest_bucket
+           FROM ingestion_tracker
+           GROUP BY dataset, last_status
+           ORDER BY dataset"""
+    ).fetchall()
+    signal_dates = db.execute("SELECT COUNT(DISTINCT signal_date), MAX(signal_date) FROM signals").fetchone()
     return api_response({
-        "last_price_update": latest_price[0].isoformat() if latest_price and latest_price[0] else None,
+        "last_price_update": str(latest_price[0]) if latest_price and latest_price[0] else None,
         "stock_count": stock_count[0] if stock_count else 0,
-        "missing_dates": [],
-        "coverage": {},
+        "signal_dates": signal_dates[0] or 0,
+        "latest_signal_date": str(signal_dates[1]) if signal_dates and signal_dates[1] else None,
+        "datasets": [{
+            "name": r[0],
+            "status": r[1],
+            "count": r[2],
+            "last_updated": str(r[3]) if r[3] else None,
+        } for r in datasets],
     })
 
 

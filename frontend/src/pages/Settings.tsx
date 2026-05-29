@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { DesktopOnly, MobileMessage } from '../utils/responsive';
 import SkeletonScreen from '../components/SkeletonScreen';
+import Tooltip from '../components/Tooltip';
 import { useToast } from '../components/Toast';
 import styles from './Settings.module.css';
 
@@ -143,10 +144,14 @@ export default function Settings() {
             <h3>損益監控門檻</h3>
             <p className={styles.hint}>當投組達到以下條件時觸發通知</p>
             <div className={styles.row}>
-              <SettingInput label="絕對損益門檻 (TWD)" item={getS('PL_THRESHOLD')} onChange={handleUpdate} type="number" />
+              <SettingInput label={
+                <Tooltip content="投資組合中單一持股的累計損益達到此絕對金額時觸發通知。設為 0 或留空則不監控。">絕對損益門檻 (TWD)</Tooltip>
+              } item={getS('PL_THRESHOLD')} onChange={handleUpdate} type="number" />
             </div>
             <div className={styles.row}>
-              <SettingInput label="損益百分比門檻 (%)" item={getS('PL_PERCENT_THRESHOLD')} onChange={handleUpdate} type="number" />
+              <SettingInput label={
+                <Tooltip content="投資組合中單一持股的累計損益百分比達到此值（相對於成本）時觸發通知。設為 0 或留空則不監控。">損益百分比門檻 (%)</Tooltip>
+              } item={getS('PL_PERCENT_THRESHOLD')} onChange={handleUpdate} type="number" />
             </div>
           </div>
 
@@ -197,7 +202,7 @@ export default function Settings() {
 }
 
 function SettingInput({ label, item, onChange, type = "text", placeholder }: {
-  label: string;
+  label: ReactNode;
   item?: SettingItem;
   onChange: (key: string, val: string) => void;
   type?: string;

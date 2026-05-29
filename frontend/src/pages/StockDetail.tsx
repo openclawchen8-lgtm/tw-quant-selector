@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { fetchStockDetail } from '../api/client';
+import { fetchStockDetail, fetchFactorHistory } from '../api/client';
+import type { FactorHistoryPoint } from '../api/client';
 import FactorMiniBar from '../components/FactorMiniBar';
 import SkeletonLoader from '../components/SkeletonLoader';
 import EmptyState from '../components/EmptyState';
@@ -22,6 +23,9 @@ export default function StockDetail() {
     info: StockInfo; prices: PricePoint[]; valuations: ValPoint[];
     financials: FinPoint[]; revenue: RevPoint[]; factor_scores: Record<string, number> | null;
   } | null>(null);
+  const [factorHistory, setFactorHistory] = useState<FactorHistoryPoint[] | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState(false);
   const validTabs = ['factors', 'financials', 'history'] as const;
   const rawTab = searchParams.get('tab');
   const initialTab = validTabs.includes(rawTab as any) ? rawTab as 'factors' | 'financials' | 'history' : 'factors';
@@ -31,7 +35,10 @@ export default function StockDetail() {
   useEffect(() => {
     if (!id) return;
     setLoading(true);
+    setHistoryLoading(true);
+    setHistoryError(false);
     fetchStockDetail(id).then((d: any) => { setData(d); setLoading(false); }).catch(() => setLoading(false));
+    fetchFactorHistory(id).then((h) => { setFactorHistory(h); setHistoryLoading(false); }).catch(() => { setHistoryError(true); setHistoryLoading(false); });
   }, [id]);
 
   useEffect(() => {
@@ -79,35 +86,21 @@ export default function StockDetail() {
       {/* Tab Content */}
       {tab === 'factors' && (
         <div className={styles.tabContent}>
-          <div className={styles.factorGrid}>
-            {['momentum', 'value', 'quality', 'growth'].map((f) => {
-              const score = factor_scores?.[f] ?? 0;
-              return (
-                <div key={f} className={styles.sparkCard}>
-                  <div className={styles.sparkHeader}>
-                    <span style={{ color: `var(--color-${f})`, fontWeight: 600 }}>
-                      {f === 'momentum' ? '動能' : f === 'value' ? '價值' : f === 'quality' ? '品質' : '成長'}
-                    </span>
-                    <FactorMiniBar name={f} score={score} showLabels />
-                  </div>
-                  <div className={styles.sparkline}>
-                    <svg width="100%" height="80" viewBox="0 0 300 80" preserveAspectRatio="none">
-                      <defs>
-                        <linearGradient id={`grad-${f}`} x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor={`var(--color-${f})`} stopOpacity="0.3" />
-                          <stop offset="100%" stopColor={`var(--color-${f})`} stopOpacity="0" />
-                        </linearGradient>
-                      </defs>
-                      <line x1="0" y1="40" x2="300" y2="40" stroke="var(--bg-border)" strokeWidth="1" strokeDasharray="4 2" />
-                      <path d={generateSparklinePath(20)} fill={`url(#grad-${f})`} />
-                      <path d={generateSparklinePath(20)} fill="none" stroke={`var(--color-${f})`} strokeWidth="1.5" className="sparkline-path" style={{ '--path-len': '400' } as React.CSSProperties} />
-                      <circle cx="300" cy="30" r="3" fill={`var(--color-${f})`} />
-                    </svg>
-                  </div>
+          {historyError ? (
+            <EmptyState scenario="failed">無法載入因子歷史資料</EmptyState>
+          ) : historyLoading ? (
+            <div className={styles.factorGrid}>
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className={styles.sparkCard}>
+                  <SkeletonLoader variant="chart" />
                 </div>
-              );
-            })}
-          </div>
+              ))}
+            </div>
+          ) : !factorHistory || factorHistory.length === 0 ? (
+            <EmptyState scenario="notrade">尚無因子歷史資料</EmptyState>
+          ) : (
+            <FactorSparklines history={factorHistory} scores={factor_scores ?? {}} />
+          )}
         </div>
       )}
 
@@ -187,14 +180,73 @@ export default function StockDetail() {
   );
 }
 
-function generateSparklinePath(n: number): string {
-  const pts: [number, number][] = [];
-  for (let i = 0; i < n; i++) {
-    const x = (i / (n - 1)) * 300;
-    const y = 20 + Math.random() * 40;
-    pts.push([x, y]);
-  }
-  const avg = pts.reduce((s, p) => s + p[1], 0) / pts.length;
-  const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0]},${40 - (p[1] - avg)}`).join('');
-  return d;
+function FactorSparklines({ history, scores }: { history: FactorHistoryPoint[]; scores: Record<string, number> }) {
+  const factors = ['momentum', 'value', 'quality', 'growth'] as const;
+  const labels: Record<string, string> = { momentum: '動能', value: '價值', quality: '品質', growth: '成長' };
+
+  const series = useMemo(() => {
+    return factors.map((f) => {
+      const vals: number[] = [];
+      for (let i = history.length - 1; i >= 0; i--) {
+        const v = history[i][f];
+        if (v != null) vals.push(v);
+      }
+      return { key: f, values: vals };
+    });
+  }, [history]);
+
+  return (
+    <div className={styles.factorGrid}>
+      {series.map(({ key, values }) => {
+        const score = scores[key] ?? 0;
+        const { path, fillPath, dotY, pathLen } = buildSparklinePath(values);
+        const gradId = `grad-${key}`;
+        return (
+          <div key={key} className={styles.sparkCard}>
+            <div className={styles.sparkHeader}>
+              <span style={{ color: `var(--color-${key})`, fontWeight: 600 }}>
+                {labels[key]}
+              </span>
+              <FactorMiniBar name={key} score={score} showLabels />
+            </div>
+            <div className={styles.sparkline}>
+              <svg width="100%" height="80" viewBox="0 0 300 80" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={`var(--color-${key})`} stopOpacity="0.3" />
+                    <stop offset="100%" stopColor={`var(--color-${key})`} stopOpacity="0" />
+                  </linearGradient>
+                </defs>
+                <line x1="0" y1="40" x2="300" y2="40" stroke="var(--bg-border)" strokeWidth="1" strokeDasharray="4 2" />
+                {fillPath && <path d={fillPath} fill={`url(#${gradId})`} />}
+                {path && <path d={path} fill="none" stroke={`var(--color-${key})`} strokeWidth="1.5" className="sparkline-path" style={{ '--path-len': pathLen } as React.CSSProperties} />}
+                {dotY != null && <circle cx="300" cy={dotY} r="3" fill={`var(--color-${key})`} />}
+              </svg>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function buildSparklinePath(values: number[]) {
+  if (values.length < 2) return { path: '', fillPath: '', dotY: null, pathLen: 0 };
+
+  const w = 300, h = 80, pad = 4;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const n = values.length;
+
+  const pts = values.map((v, i) => {
+    const x = (i / (n - 1)) * w;
+    const y = h - pad - ((v - min) / range) * (h - 2 * pad);
+    return [x, y] as [number, number];
+  });
+
+  const line = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join('');
+  const fill = `M${pts[0][0].toFixed(1)},${h}L${pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join('L')}L${pts[n - 1][0].toFixed(1)},${h}Z`;
+
+  return { path: line, fillPath: fill, dotY: pts[n - 1][1], pathLen: Math.round(w * 1.5) };
 }

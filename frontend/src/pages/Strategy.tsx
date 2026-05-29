@@ -790,9 +790,18 @@ export default function Strategy() {
               </div>
             ))}
           </div>
-          <button className={`${styles.applyBtn} ${styles.guruApplyBtn}`}
+          <button className={`${styles.applyBtn} ${styles.guruApplyBtn} ${!selectedGuru ? styles.applyDisabled : ''}`}
+            disabled={!selectedGuru}
             onClick={() => {
-              if (selectedGuru && guruMode === 'preset') loadPreset(selectedGuru);
+              if (!selectedGuru) return;
+              loadPreset(selectedGuru);
+              if (guruMode === 'filter') {
+                setGuruFeedback(`已套用 ${GURU_PRESETS[selectedGuru]?.label || selectedGuru} 為篩選器（篩選條件仍在開發中，權重已先套用）`);
+                setTimeout(() => setGuruFeedback(null), 5000);
+              } else if (guruMode === 'scoring') {
+                setGuruFeedback(`已套用 ${GURU_PRESETS[selectedGuru]?.label || selectedGuru} 為評分因子（評分整合仍在開發中，權重已先套用）`);
+                setTimeout(() => setGuruFeedback(null), 5000);
+              }
             }}>
             {guruMode === 'filter' ? '▶ 套用為篩選器' : guruMode === 'scoring' ? '▶ 套用為評分因子' : '▶ 套用權重組合'}
           </button>
