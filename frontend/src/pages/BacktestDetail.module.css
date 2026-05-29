@@ -84,3 +84,16 @@
 
 .actionBuy { color: var(--color-bull-text); font-weight: 600; }
 .actionSell { color: var(--color-bear-text); font-weight: 600; }
+
+.printBtn {
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-accent);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-btn);
+  color: #fff;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.printBtn:hover { opacity: 0.85; }

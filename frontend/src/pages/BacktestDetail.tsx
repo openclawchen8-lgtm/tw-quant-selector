@@ -63,7 +63,7 @@ export default function BacktestDetail() {
   return (
     <div className={styles.page}>
       <div className={styles.header}>
-        <button className={styles.backBtn} onClick={() => navigate('/backtest')}>← 回列表</button>
+        <button className={`${styles.backBtn} no-print`} onClick={() => navigate('/backtest')}>← 回列表</button>
         <div className={styles.headerInfo}>
           <h1 className={styles.title}>回測詳情</h1>
           <span className={styles.runId}>{runId}</span>
@@ -72,6 +72,7 @@ export default function BacktestDetail() {
           <span>建立：{created_at?.slice(0, 19).replace('T', ' ') || '—'}</span>
           <span>區間：{start_date || '?'} ~ {end_date || '?'}</span>
         </div>
+        <button className={`${styles.printBtn} no-print`} onClick={() => window.print()}>🖨 列印報告</button>
       </div>
 
       <div className={styles.metricsGrid}>

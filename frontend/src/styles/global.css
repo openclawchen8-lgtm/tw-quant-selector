@@ -146,3 +146,93 @@ input, select, textarea { font-family: var(--font-ui); }
   .route-page { animation: none; }
   .sparkline-path { animation: none; stroke-dashoffset: 0; }
 }
+
+/* ── Print styles ── */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 20mm;
+  }
+
+  html, body {
+    background: #fff !important;
+    color: #1a1a1a !important;
+    font-size: 11pt;
+  }
+
+  .no-print,
+  nav, aside, .sidebar, .navbar,
+  button, .btn, [role="tab"], .tabs,
+  .actionBtn, .resetBtn, .applyBtn,
+  .refreshBtn, .backBtn, .printBtn {
+    display: none !important;
+  }
+
+  .route-page {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  .page, .panel, .card, .section {
+    background: #fff !important;
+    border-color: #ccc !important;
+    box-shadow: none !important;
+  }
+
+  .text-positive, .text-good, .text-excellent,
+  .actionBuy, [class*="bull"] {
+    color: #006400 !important;
+  }
+
+  .text-negative, .text-poor, .text-warning,
+  .actionSell, [class*="bear"] {
+    color: #8b0000 !important;
+  }
+
+  .statCard, .StatCard, [class*="statCard"] {
+    background: #f8f8f8 !important;
+    border: 1px solid #ddd !important;
+  }
+
+  table {
+    page-break-inside: auto;
+    font-size: 9pt;
+  }
+
+  thead { display: table-header-group; }
+
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+
+  th, td {
+    padding: 4px 6px !important;
+    border-color: #ccc !important;
+    color: #1a1a1a !important;
+  }
+
+  .stockLink {
+    color: #1a1a1a !important;
+    text-decoration: none !important;
+  }
+
+  h1, h2, h3 {
+    page-break-after: avoid;
+    color: #1a1a1a !important;
+  }
+
+  .metricsGrid {
+    page-break-inside: avoid;
+  }
+
+  .section {
+    page-break-inside: avoid;
+  }
+
+  [class*="sparkline"] svg,
+  [class*="chart"] svg {
+    background: #fff !important;
+  }
+}
