@@ -36,6 +36,19 @@ def compute_composite_scores(
     stock_ids = [s["stock_id"] for s in universe["stocks"]]
     etf_ids = [s["stock_id"] for s in universe["etfs"]]
 
+    # Apply guru filter if requested
+    guru_filter_name = (strategy_params or {}).get("guru_filter")
+    if guru_filter_name:
+        from tw_quant_selector.strategies.guru_filters import get_guru_filter
+        log.info("strategy.applying_guru_filter", guru=guru_filter_name)
+        gf = get_guru_filter(guru_filter_name)
+        filtered_stocks = []
+        for sid in stock_ids:
+            results = gf.get_pass_fail(db, sid, as_of_date)
+            if all(results.values()):
+                filtered_stocks.append(sid)
+        stock_ids = filtered_stocks
+
     stock_scores, stock_individual = _combine(db, stock_ids, as_of_date, weights, strategy_params)
     etf_scores, etf_individual = _combine(db, etf_ids, as_of_date, weights, strategy_params)
 
@@ -81,29 +94,6 @@ def _combine(
             if sid not in combined:
                 combined[sid] = []
             combined[sid].append(score * weight)
-
-    guru_weight = weights.get("guru", 0)
-    if guru_weight > 0:
-        from tw_quant_selector.strategies.guru_scoring import compute_guru_scores
-        guru_strategy_params = (strategy_params or {}).get("guru", {})
-        guru_weights = guru_strategy_params.get("guru_weights")
-        guru_scores = compute_guru_scores(db, stock_ids, as_of_date)
-        guru_combined: dict[str, float] = {}
-        for sid in stock_ids:
-            if sid not in guru_scores:
-                continue
-            sg = guru_scores[sid]
-            composite = sum(sg.get(g, 0) * float(guru_weights.get(g, 1.0 / 6)) for g in sg) if guru_weights else float(np.mean(list(sg.values())))
-            guru_combined[sid] = composite
-            individual["guru"] = {sid: composite for sid in guru_combined}
-        if guru_combined:
-            gvals = np.array(list(guru_combined.values()))
-            if np.std(gvals) > 1e-12:
-                gz = safe_zscore(gvals)
-                for i, sid in enumerate(guru_combined):
-                    if sid not in combined:
-                        combined[sid] = []
-                    combined[sid].append(float(gz[i]) * guru_weight)
 
     result: dict[str, float] = {}
     for sid, components in combined.items():

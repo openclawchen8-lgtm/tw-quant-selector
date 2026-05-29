@@ -134,6 +134,7 @@
   --color-value:    var(--_green-500);
   --color-quality:  var(--_amber-500);
   --color-growth:   var(--_cyan-500);
+  --color-guru:     var(--_blue-500);
 
   /* ── Spacing (step names for convenient shorthand) ── */
   --space-1:  var(--_space-4);

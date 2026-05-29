@@ -203,7 +203,8 @@
 .filterRow label { font-size: var(--font-size-sm); color: var(--text-secondary); }
 
 .filterRow select,
-.filterRow input[type="number"] {
+.filterRow input[type="number"],
+.select {
   width: 120px;
   padding: var(--space-1) var(--space-2);
   background: var(--bg-elevated);
@@ -212,6 +213,10 @@
   color: var(--text-primary);
   font-size: var(--font-size-sm);
   text-align: right;
+}
+
+.select {
+  text-align: left;
 }
 
 .filterRow input[type="checkbox"] { accent-color: var(--color-accent); }

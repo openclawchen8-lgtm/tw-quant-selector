@@ -54,6 +54,7 @@ const STRATEGY_LABELS: Record<string, string> = {
   value: '價值',
   quality: '品質',
   growth: '成長',
+  guru: '大師評分',
 };
 
 const STRATEGY_COLORS: Record<string, string> = {
@@ -61,6 +62,7 @@ const STRATEGY_COLORS: Record<string, string> = {
   value: 'var(--color-value)',
   quality: 'var(--color-quality)',
   growth: 'var(--color-growth)',
+  guru: 'var(--color-guru)',
 };
 
 const GURU_PRESETS: Record<string, { label: string; color: string; weights: Record<string, number> }> = {
@@ -157,9 +159,9 @@ const GURU_MODE_DESC: Record<GuruMode, string> = {
   preset: '載入大師的建議權重組合，可在此基礎上微調',
 };
 
-const STRATEGY_NAMES = ['momentum', 'value', 'quality', 'growth'];
+const STRATEGY_NAMES = ['momentum', 'value', 'quality', 'growth', 'guru'];
 const STRATEGY_CN: Record<string, string> = {
-  momentum: '動能', value: '價值', quality: '品質', growth: '成長',
+  momentum: '動能', value: '價值', quality: '品質', growth: '成長', guru: '大師',
 };
 
 interface ParamField {
@@ -204,6 +206,11 @@ const STRATEGY_PARAM_SCHEMAS: Record<string, { fields: ParamField[]; subFactors?
     ],
     subFactors: ['rev_weight', 'eps_weight'],
     autoSum: '100',
+  },
+  guru: {
+    fields: [
+      { key: 'selected_guru', label: '參考大師', min: 0, max: 0, step: 0 },
+    ],
   },
 };
 
@@ -280,7 +287,7 @@ function autoRebalance(
 export default function Strategy() {
   const [config, setConfig] = useState<StrategyConfig | null>(null);
   const [weights, setWeights] = useState<Record<string, number>>({});
-  const [params, setParams] = useState<Record<string, Record<string, number | boolean>>>({});
+  const [params, setParams] = useState<Record<string, Record<string, any>>>({});
   const [includeEft, setIncludeEft] = useState(false);
   const [minMarketCap, setMinMarketCap] = useState(3_000_000_000);
   const [minDailyVolume, setMinDailyVolume] = useState(0);
@@ -533,7 +540,7 @@ export default function Strategy() {
     for (const [name, strat] of Object.entries(config.strategies)) {
       p[name] = { ...strat.params };
     }
-    setParams(p);
+    setParams({ ...p, guru_filter: null });
     setIncludeEft(config.universe_defaults.include_etf);
     setMinMarketCap(config.universe_defaults.min_market_cap);
     setMinDailyVolume(0);
@@ -619,25 +626,39 @@ export default function Strategy() {
                     {STRATEGY_LABELS[name] || name}
                   </summary>
                   {schema?.fields.map((f) => {
-                    const v = Number(params[name]?.[f.key] ?? config?.strategies[name]?.params?.[f.key] ?? 0);
-                    const isFixed = f.min === f.max;
-                    return (
-                      <div key={f.key} className={styles.paramRow}>
-                        <label>{f.label}</label>
-                        {isFixed ? (
-                          <span className="font-data">{v}{f.suffix || ''}</span>
-                        ) : (
-                          <div className={styles.filterSliderGroup}>
-                            <input type="range" min={f.min} max={f.max} step={f.step} value={v}
-                              onChange={(e) => updateParam(name, f.key, Number(e.target.value))}
-                              className={styles.slider} />
-                            <span className="font-data">{v}{f.suffix || ''}</span>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </details>
+                   const val = params[name]?.[f.key] ?? config?.strategies[name]?.params?.[f.key];
+                   if (f.key === 'selected_guru') {
+                     return (
+                       <div key={f.key} className={styles.paramRow}>
+                         <label>{f.label}</label>
+                         <select value={String(val || 'buffett')}
+                           onChange={(e) => updateParam(name, f.key, e.target.value)}
+                           className={styles.select}>
+                           {GURU_LIST.map(g => (
+                             <option key={g.id} value={g.id}>{g.nameCN} ({g.nameEN})</option>
+                           ))}
+                         </select>
+                       </div>
+                     );
+                   }
+                   const v = Number(val ?? 0);
+                   const isFixed = f.min === f.max;
+                   return (
+                     <div key={f.key} className={styles.paramRow}>
+                       <label>{f.label}</label>
+                       {isFixed ? (
+                         <span className="font-data">{v}{f.suffix || ''}</span>
+                       ) : (
+                         <div className={styles.filterSliderGroup}>
+                           <input type="range" min={f.min} max={f.max} step={f.step} value={v}
+                             onChange={(e) => updateParam(name, f.key, Number(e.target.value))}
+                             className={styles.slider} />
+                           <span className="font-data">{v}{f.suffix || ''}</span>
+                         </div>
+                       )}
+                     </div>
+                   );
+                  })}                </details>
               );
             })}
           </div>
@@ -687,6 +708,20 @@ export default function Strategy() {
               <input type="number" value={topNEtf} min={0} max={20}
                 onChange={(e) => setTopNEtf(Number(e.target.value))} />
             </div>
+            {params.guru_filter && (
+              <div className={styles.filterRow}>
+                <label>大師篩選器</label>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <span className={styles.highlight} style={{ fontSize: 'var(--font-size-sm)' }}>
+                    {GURU_LIST.find(g => g.id === params.guru_filter)?.nameCN}
+                  </span>
+                  <button onClick={() => setParams(p => ({ ...p, guru_filter: null }))}
+                    style={{ background: 'none', border: 'none', color: 'var(--color-negative)', cursor: 'pointer', padding: 0 }}>
+                    ✕
+                  </button>
+                </div>
+              </div>
+            )}
             <div className={styles.filterEstimate}>
               預估篩選結果：篩掉 <strong>~{UNIVERSE_BASE - estimateUniverseSize(minMarketCap, minDailyVolume, excludeFinancial, excludeKY)}</strong> 檔，剩 <strong className={styles.highlight}>{estimateUniverseSize(minMarketCap, minDailyVolume, excludeFinancial, excludeKY)}</strong> 檔
             </div>
@@ -794,12 +829,23 @@ export default function Strategy() {
             disabled={!selectedGuru}
             onClick={() => {
               if (!selectedGuru) return;
-              loadPreset(selectedGuru);
-              if (guruMode === 'filter') {
-                setGuruFeedback(`已套用 ${GURU_PRESETS[selectedGuru]?.label || selectedGuru} 為篩選器（篩選條件仍在開發中，權重已先套用）`);
+              if (guruMode === 'preset') {
+                loadPreset(selectedGuru);
+              } else if (guruMode === 'filter') {
+                setParams(prev => ({ ...prev, guru_filter: selectedGuru }));
+                setGuruFeedback(`已套用 ${GURU_PRESETS[selectedGuru]?.label || selectedGuru} 為硬性篩選器（將先過濾符合大師條件的股票）`);
                 setTimeout(() => setGuruFeedback(null), 5000);
               } else if (guruMode === 'scoring') {
-                setGuruFeedback(`已套用 ${GURU_PRESETS[selectedGuru]?.label || selectedGuru} 為評分因子（評分整合仍在開發中，權重已先套用）`);
+                setWeights(w => {
+                  if (w['guru'] > 0) return w;
+                  const res = autoRebalance(w, 'guru', 20, lockedSliders);
+                  return res || { ...w, guru: 20 };
+                });
+                setParams(prev => ({
+                  ...prev,
+                  guru: { ...prev.guru, selected_guru: selectedGuru }
+                }));
+                setGuruFeedback(`已套用 ${GURU_PRESETS[selectedGuru]?.label || selectedGuru} 為評分因子（權重已自動調整，請確認下方參數）`);
                 setTimeout(() => setGuruFeedback(null), 5000);
               }
             }}>
