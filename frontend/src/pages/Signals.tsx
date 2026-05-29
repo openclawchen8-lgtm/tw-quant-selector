@@ -9,6 +9,7 @@ import EmptyState from '../components/EmptyState';
 import MissingDataSummary from '../components/MissingDataSummary';
 import { useToast } from '../components/Toast';
 import { formatNumber, colorize } from '../utils/format';
+import { colorForChange, trendIcon } from '../utils/color';
 import SignalRowDetail from '../components/SignalRowDetail';
 import type { ColumnDef } from '@tanstack/react-table';
 import styles from './Signals.module.css';
@@ -190,8 +191,8 @@ export default function Signals() {
         const c = row.original.change;
         const cp = row.original.change_pct;
         if (c == null) return <span className="font-data">—</span>;
-        const cl = c > 0 ? 'var(--color-bull-text)' : c < 0 ? 'var(--color-bear-text)' : 'var(--text-muted)';
-        const sym = c > 0 ? '▲' : c < 0 ? '▼' : '—';
+        const cl = colorForChange(c);
+        const sym = trendIcon(c) || '—';
         return (
           <span className="font-data" style={{ color: cl }}>
             {sym} {formatNumber(Math.abs(c), { type: 'price' })}{cp != null ? ` (${cp > 0 ? '+' : ''}${cp.toFixed(1)}%)` : ''}

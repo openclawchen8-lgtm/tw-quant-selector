@@ -6,6 +6,7 @@ import FactorMiniBar from '../components/FactorMiniBar';
 import SkeletonLoader from '../components/SkeletonLoader';
 import EmptyState from '../components/EmptyState';
 import { formatNumber, colorize } from '../utils/format';
+import { colorForChange } from '../utils/color';
 import styles from './StockDetail.module.css';
 
 interface StockInfo {
@@ -70,7 +71,7 @@ export default function StockDetail() {
         </div>
         <div className={styles.priceSection}>
           <span className={styles.price}>{formatNumber(lastPrice, { type: 'price' })}</span>
-          <span className={styles.change} style={{ color: 'var(--color-bull-text)' }}>▲—</span>
+          <span className={styles.change} style={{ color: colorForChange(0) }}>▲—</span>
         </div>
       </div>
 

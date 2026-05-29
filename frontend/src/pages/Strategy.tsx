@@ -287,7 +287,7 @@ function autoRebalance(
 export default function Strategy() {
   const [config, setConfig] = useState<StrategyConfig | null>(null);
   const [weights, setWeights] = useState<Record<string, number>>({});
-  const [params, setParams] = useState<Record<string, Record<string, any>>>({});
+  const [params, setParams] = useState<Record<string, any>>({});
   const [includeEft, setIncludeEft] = useState(false);
   const [minMarketCap, setMinMarketCap] = useState(3_000_000_000);
   const [minDailyVolume, setMinDailyVolume] = useState(0);
@@ -321,9 +321,9 @@ export default function Strategy() {
           catch { return {}; }
         })();
         setWeights(saved.weights || { ...cfg.default_weights });
-        const p: Record<string, Record<string, number | boolean>> = {};
+        const p: Record<string, any> = saved.params || {};
         for (const [name, strat] of Object.entries(cfg.strategies)) {
-          p[name] = saved.params?.[name] || { ...strat.params };
+          if (!p[name]) p[name] = { ...strat.params };
         }
         setParams(p);
         setIncludeEft(saved.includeEft ?? cfg.universe_defaults.include_etf);
@@ -438,8 +438,8 @@ export default function Strategy() {
     } catch { /* ignore */ }
   }, []);
 
-  const updateParam = (strategy: string, key: string, val: number | boolean) => {
-    const numVal = typeof val === 'number' ? val : (val ? 1 : 0);
+  const updateParam = (strategy: string, key: string, val: any) => {
+    const numVal = typeof val === 'number' ? val : (val === true ? 1 : (val === false ? 0 : 0));
     setParams((p) => {
       const next = { ...p, [strategy]: { ...p[strategy], [key]: val } };
       const schema = STRATEGY_PARAM_SCHEMAS[strategy];
@@ -536,11 +536,12 @@ export default function Strategy() {
   const resetToDefaults = () => {
     if (!config) return;
     setWeights({ ...config.default_weights });
-    const p: Record<string, Record<string, number | boolean>> = {};
+    const p: Record<string, any> = {};
     for (const [name, strat] of Object.entries(config.strategies)) {
       p[name] = { ...strat.params };
     }
-    setParams({ ...p, guru_filter: null });
+    p.guru_filter = null;
+    setParams(p);
     setIncludeEft(config.universe_defaults.include_etf);
     setMinMarketCap(config.universe_defaults.min_market_cap);
     setMinDailyVolume(0);
@@ -843,7 +844,7 @@ export default function Strategy() {
                 });
                 setParams(prev => ({
                   ...prev,
-                  guru: { ...prev.guru, selected_guru: selectedGuru }
+                  guru: { ...(prev.guru || {}), selected_guru: selectedGuru }
                 }));
                 setGuruFeedback(`已套用 ${GURU_PRESETS[selectedGuru]?.label || selectedGuru} 為評分因子（權重已自動調整，請確認下方參數）`);
                 setTimeout(() => setGuruFeedback(null), 5000);
