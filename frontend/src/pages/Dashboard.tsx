@@ -8,6 +8,7 @@ import FactorMiniBar from '../components/FactorMiniBar';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { useToast } from '../components/Toast';
 import { formatNumber } from '../utils/format';
+import { colorForChange, trendIcon } from '../utils/color';
 import MarketStatus from '../components/MarketStatus';
 import SignalRowDetail from '../components/SignalRowDetail';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -114,8 +115,8 @@ export default function Dashboard() {
         const c = row.original.change;
         const cp = row.original.change_pct;
         if (c == null) return <span className="font-data">—</span>;
-        const cl = c > 0 ? 'var(--color-bull-text)' : c < 0 ? 'var(--color-bear-text)' : 'var(--text-muted)';
-        const sym = c > 0 ? '▲' : c < 0 ? '▼' : '—';
+        const cl = colorForChange(c);
+        const sym = trendIcon(c) || '—';
         return (
           <span className="font-data" style={{ color: cl }}>
             {sym} {formatNumber(Math.abs(c), { type: 'price' })}{cp != null ? ` (${cp > 0 ? '+' : ''}${cp.toFixed(1)}%)` : ''}

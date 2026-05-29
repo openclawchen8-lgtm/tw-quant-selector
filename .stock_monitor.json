@@ -1,0 +1,16 @@
+[
+  {
+    "stock_id": "0050",
+    "avg_cost": 150.0,
+    "shares": 2000,
+    "is_etf": true,
+    "market": "TSE"
+  },
+  {
+    "stock_id": "2330",
+    "avg_cost": 600.0,
+    "shares": 1000,
+    "is_etf": false,
+    "market": "TSE"
+  }
+]

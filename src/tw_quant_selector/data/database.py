@@ -185,6 +185,14 @@ CREATE TABLE IF NOT EXISTS alert_log (
     sent            BOOLEAN,
     reason          VARCHAR
 );
+
+CREATE TABLE IF NOT EXISTS portfolio (
+    stock_id        VARCHAR PRIMARY KEY,
+    avg_cost        DECIMAL(18,2) NOT NULL,
+    shares          INTEGER NOT NULL,
+    is_etf          BOOLEAN DEFAULT FALSE,
+    updated_at      TIMESTAMP DEFAULT now()
+);
 """
 
 

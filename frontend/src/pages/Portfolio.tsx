@@ -4,6 +4,7 @@ import EmptyState from '../components/EmptyState';
 import Tooltip from '../components/Tooltip';
 import { useToast } from '../components/Toast';
 import { formatNumber } from '../utils/format';
+import { trendIcon } from '../utils/color';
 import styles from './Portfolio.module.css';
 
 const API = 'http://localhost:8000';
@@ -307,7 +308,7 @@ export default function Portfolio() {
                     <td data-type="number">{formatNumber(h.avgCost, { type: 'price' })}</td>
                     <td data-type="number">{formatNumber(h.current_price, { type: 'price' })}</td>
                     <td data-type="number" className={pnl >= 0 ? styles.bullText : styles.bearText}>
-                      <span className={styles.pnlIcon}>{pnl >= 0 ? '▲' : '▼'}</span>
+                      <span className={styles.pnlIcon}>{trendIcon(pnl) || '—'}</span>
                       ${formatNumber(Math.round(pnl), { type: 'market_cap' }).replace('億', '')}
                     </td>
                     <td data-type="number" className={pnl >= 0 ? styles.bullText : styles.bearText}>
@@ -453,11 +454,11 @@ export default function Portfolio() {
                     <td data-type="number">{formatNumber(l.cost, { type: 'price' })}</td>
                     <td data-type="number">{formatNumber(cur, { type: 'price' })}</td>
                     <td data-type="number" className={lpnl >= 0 ? styles.bullText : styles.bearText}>
-                      <span className={styles.pnlIcon}>{lpnl >= 0 ? '▲' : '▼'}</span>
+                      <span className={styles.pnlIcon}>{trendIcon(lpnl) || '—'}</span>
                       ${formatNumber(Math.round(lpnl), { type: 'market_cap' }).replace('億', '')}
                     </td>
                     <td data-type="number" className={lpnl >= 0 ? styles.bullText : styles.bearText}>
-                      {lpnl >= 0 ? '▲' : '▼'} {lpnlPct >= 0 ? '+' : ''}{formatNumber(lpnlPct, { type: 'percent' })}
+                      {(trendIcon(lpnl) || '—')} {lpnlPct >= 0 ? '+' : ''}{formatNumber(lpnlPct, { type: 'percent' })}
                     </td>
                     <td><button className={styles.delBtn} onClick={() => removeLot(l.id)}>✕</button></td>
                   </tr>

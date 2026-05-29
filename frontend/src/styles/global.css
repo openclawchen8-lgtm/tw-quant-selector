@@ -182,12 +182,12 @@ input, select, textarea { font-family: var(--font-ui); }
 
   .text-positive, .text-good, .text-excellent,
   .actionBuy, [class*="bull"] {
-    color: #006400 !important;
+    color: #8b0000 !important;
   }
 
   .text-negative, .text-poor, .text-warning,
   .actionSell, [class*="bear"] {
-    color: #8b0000 !important;
+    color: #006400 !important;
   }
 
   .statCard, .StatCard, [class*="statCard"] {

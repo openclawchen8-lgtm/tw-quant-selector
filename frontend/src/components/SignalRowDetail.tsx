@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { fetchStockDetail } from '../api/client';
 import { formatNumber } from '../utils/format';
+import { FACTOR_LABELS } from '../utils/color';
 import FactorMiniBar from './FactorMiniBar';
 import styles from './SignalRowDetail.module.css';
 
@@ -64,7 +65,7 @@ export default function SignalRowDetail({ stockId }: SignalRowDetailProps) {
              return (
               <div key={f} className={styles.factorItem}>
                 <span className={styles.factorName} style={{ color: `var(--color-${f})` }}>
-                  {f === 'momentum' ? '動能' : f === 'value' ? '價值' : f === 'quality' ? '品質' : '成長'}
+                  {FACTOR_LABELS[f] || f}
                 </span>
                 {score != null ? (
                   <FactorMiniBar name={f} score={score} showLabels />

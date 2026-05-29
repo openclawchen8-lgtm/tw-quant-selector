@@ -68,4 +68,14 @@ for s in result["etfs"]:
 
 print(f"\n✅ Done — {result['total_candidates']} candidates evaluated")
 
+# --- Step 3: System Health Check ---
+print(f"\n🔍 Step 3: Running system health check...")
+try:
+    from tw_quant_selector.monitoring.alerting import AlertChecker
+    checker = AlertChecker(db)
+    checker.check_all()
+    print("  ✅ Health check completed")
+except Exception as e:
+    print(f"  ⚠️ Health check failed: {e}")
+
 db.close()
