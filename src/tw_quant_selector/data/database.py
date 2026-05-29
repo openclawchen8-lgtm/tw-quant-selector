@@ -197,6 +197,7 @@ log = structlog.get_logger()
 class Database:
     _all_ro_conns: set[duckdb.DuckDBPyConnection] = set()
     _ro_lock = threading.Lock()
+    _ro_epoch = 0
 
     def __init__(self, db_path: str | None = None, read_only: bool = False):
         self.db_path = db_path or os.getenv("DUCKDB_PATH", str(Path.cwd() / "data" / "tw_quant.duckdb"))
@@ -210,6 +211,7 @@ class Database:
                 try: conn.close()
                 except: pass
             self._all_ro_conns.clear()
+            self._ro_epoch += 1
 
     def connect(self, read_only: bool | None = None) -> duckdb.DuckDBPyConnection:
         if read_only is None:
@@ -233,12 +235,15 @@ class Database:
         if read_only:
             # Use thread-local connection for read-only to ensure stability
             cached = getattr(self._local, "conn", None)
-            if cached is None or cached.closed:
+            cached_epoch = getattr(self._local, "epoch", -1)
+            
+            if cached is None or cached_epoch < self._ro_epoch:
                 Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
                 conn = duckdb.connect(self.db_path, read_only=True)
                 with self._ro_lock:
                     self._all_ro_conns.add(conn)
                 self._local.conn = conn
+                self._local.epoch = self._ro_epoch
             return self._local.conn
 
         # For write access, close ALL read-only connections first
