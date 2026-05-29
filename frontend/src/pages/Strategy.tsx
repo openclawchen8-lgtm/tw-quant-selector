@@ -297,6 +297,7 @@ export default function Strategy() {
   const [lockedMsg, setLockedMsg] = useState('');
   const [selectedGuru, setSelectedGuru] = useState<string | null>(null);
   const [guruMode, setGuruMode] = useState<GuruMode>('filter');
+  const [guruFeedback, setGuruFeedback] = useState<string | null>(null);
   const [corrMatrix, setCorrMatrix] = useState<Record<string, Record<string, number>> | null>(null);
   const [configHistory, setConfigHistory] = useState<any[]>([]);
   const [historyNote, setHistoryNote] = useState('');
@@ -308,21 +309,38 @@ export default function Strategy() {
     apiFetch<StrategyConfig>('/api/v1/strategies/config')
       .then((cfg) => {
         setConfig(cfg);
-        setWeights({ ...cfg.default_weights });
+        const saved = (() => {
+          try { return JSON.parse(localStorage.getItem('tw_quant_strategy_state') || '{}'); }
+          catch { return {}; }
+        })();
+        setWeights(saved.weights || { ...cfg.default_weights });
         const p: Record<string, Record<string, number | boolean>> = {};
         for (const [name, strat] of Object.entries(cfg.strategies)) {
-          p[name] = { ...strat.params };
+          p[name] = saved.params?.[name] || { ...strat.params };
         }
         setParams(p);
-        setIncludeEft(cfg.universe_defaults.include_etf);
-        setMinMarketCap(cfg.universe_defaults.min_market_cap);
-        setExcludeFinancial(cfg.universe_defaults.exclude_financial);
-        setTopN(cfg.universe_defaults.top_n_stocks);
-        setTopNEtf(cfg.universe_defaults.top_n_etfs);
+        setIncludeEft(saved.includeEft ?? cfg.universe_defaults.include_etf);
+        setMinMarketCap(saved.minMarketCap ?? cfg.universe_defaults.min_market_cap);
+        setMinDailyVolume(saved.minDailyVolume ?? 0);
+        setExcludeFinancial(saved.excludeFinancial ?? cfg.universe_defaults.exclude_financial);
+        setExcludeKY(saved.excludeKY ?? false);
+        setTopN(saved.topN ?? cfg.universe_defaults.top_n_stocks);
+        setTopNEtf(saved.topNEtf ?? cfg.universe_defaults.top_n_etfs);
         setLoading(false);
       })
       .catch(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!config) return;
+    try {
+      localStorage.setItem('tw_quant_strategy_state', JSON.stringify({
+        weights, params, includeEft, minMarketCap, minDailyVolume,
+        excludeFinancial, excludeKY, topN, topNEtf,
+      }));
+    } catch { /* ignore */ }
+  }, [weights, params, includeEft, minMarketCap, minDailyVolume,
+      excludeFinancial, excludeKY, topN, topNEtf, config]);
 
   const loadPreset = (key: string) => {
     const preset = GURU_PRESETS[key];
@@ -335,6 +353,11 @@ export default function Strategy() {
         const adjustK = Object.keys(next).find(k => next[k] > 0) || 'momentum';
         next[adjustK] = Math.max(0, next[adjustK] + diff);
       }
+      const changed = Object.entries(preset.weights)
+        .map(([k, v]) => `${STRATEGY_LABELS[k] || k} ${w[k] || 0}% → ${v}%`)
+        .join('、');
+      setGuruFeedback(`已套用 ${preset.label} 權重：${changed}`);
+      setTimeout(() => setGuruFeedback(null), 5000);
       return next;
     });
   };
@@ -549,6 +572,7 @@ export default function Strategy() {
             <button className={styles.resetBtn} onClick={resetToDefaults}>↺ 重設</button>
           </div>
         </div>
+        {guruFeedback && <div className={styles.guruFeedback}>{guruFeedback}</div>}
         <div className={styles.presetBar}>
           <span className={styles.presetLabel}>快速預設：</span>
           {Object.entries(GURU_PRESETS).map(([key, g]) => (
@@ -779,13 +803,34 @@ export default function Strategy() {
             <p className={styles.muted}>尚無歷史記錄</p>
           ) : (
             <div className={styles.historyList}>
-              {configHistory.map((h: any) => (
-                <div key={h.config_id} className={styles.historyItem}>
-                  <span className={styles.historyTime}>{h.changed_at?.slice(0, 19).replace('T', ' ')}</span>
-                  <span className={styles.historyBy}>{h.changed_by}</span>
-                  <span className={styles.historyNote}>{h.note || ''}</span>
-                </div>
-              ))}
+              {configHistory.map((h: any) => {
+                let diffParts: string[] = [];
+                try {
+                  const w = typeof h.weights === 'string' ? JSON.parse(h.weights) : h.weights;
+                  if (w) {
+                    diffParts = Object.entries(w as Record<string, number>)
+                      .map(([k, v]) => `${STRATEGY_LABELS[k] || k} ${v}%`);
+                  }
+                  const u = typeof h.universe_config === 'string' ? JSON.parse(h.universe_config) : h.universe_config;
+                  if (u?.topN) diffParts.push(`選股 ${u.topN}檔`);
+                  if (u?.includeEft) diffParts.push('含ETF');
+                  if (u?.excludeFinancial) diffParts.push('排除金融');
+                } catch {}
+                return (
+                  <div key={h.config_id} className={styles.historyItem}>
+                    <div className={styles.historyMeta}>
+                      <span className={styles.historyTime}>{h.changed_at?.slice(0, 19).replace('T', ' ')}</span>
+                      <span className={styles.historyBy}>{h.changed_by}</span>
+                      {h.note && <span className={styles.historyNote}>{h.note}</span>}
+                    </div>
+                    {diffParts.length > 0 && (
+                      <div className={styles.historyDiff}>
+                        {diffParts.map((d, i) => <span key={i} className={styles.diffChip}>{d}</span>)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -800,7 +845,11 @@ export default function Strategy() {
                   <span className={styles.legendItem}><span className={styles.legendBox} style={{ background: '#059669' }}></span> 負相關</span>
                 </div>
               </div>
-              <p className={styles.hint}>Pearson 相關係數（近一年）。值介於 -1 到 1 之間。</p>
+              <p className={styles.corrHint}>
+                此矩陣顯示各策略因子評分之間的 Pearson 相關係數（近一年歷史資料）。<br />
+                值域 -1 ~ 1：<strong>正相關</strong>（同漲同跌）→ 分散效果差；<strong>負相關</strong>（互補）→ 分散效果佳。<br />
+                調整策略參數或權重後，因子間的相關性會隨之改變，你可在此觀察變化。
+              </p>
               
               <div className={styles.corrGrid}>
                 <div className={styles.corrRow}>

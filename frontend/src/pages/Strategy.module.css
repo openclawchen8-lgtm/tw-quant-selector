@@ -36,6 +36,7 @@
 }
 
 .hint { color: var(--text-muted); font-size: var(--font-size-xs); margin-bottom: var(--space-2); }
+.corrHint { color: var(--text-muted); font-size: var(--font-size-xs); margin-bottom: var(--space-2); line-height: 1.6; }
 
 .presetBar {
   display: flex;
@@ -519,28 +520,28 @@
 }
 
 .corrLabel {
-  width: 48px;
-  font-size: 11px;
+  width: 72px;
+  font-size: 13px;
   font-weight: 700;
   text-align: right;
   padding-right: var(--space-2);
 }
 
 .corrHeader {
-  width: 64px;
+  width: 80px;
   text-align: center;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   padding: var(--space-1) 0;
 }
 
 .corrCell {
-  width: 64px;
-  height: 36px;
+  width: 80px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: 14px;
   font-family: var(--font-data);
   font-weight: 700;
   border-radius: 4px;
@@ -594,16 +595,63 @@
 
 .historyItem {
   display: flex;
-  gap: var(--space-3);
+  flex-direction: column;
+  gap: var(--space-1);
   font-size: var(--font-size-xs);
-  padding: var(--space-1) var(--space-2);
+  padding: var(--space-2);
   background: var(--bg-elevated);
   border-radius: var(--radius-btn);
+}
+
+.historyMeta {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
 }
 
 .historyTime { color: var(--text-muted); min-width: 140px; }
 .historyBy { color: var(--color-accent); min-width: 60px; }
 .historyNote { color: var(--text-secondary); flex: 1; }
+
+.historyDiff {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-1) 0 0 var(--space-1);
+  border-top: 1px solid var(--bg-border);
+  margin-top: var(--space-1);
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.diffChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 6px;
+  border-radius: var(--radius-tag);
+  background: var(--bg-surface);
+}
+
+.diffArrow {
+  color: var(--text-muted);
+  margin: 0 2px;
+}
+
+.guruFeedback {
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-accent);
+  color: #fff;
+  border-radius: var(--radius-tag);
+  font-size: var(--font-size-sm);
+  margin-bottom: var(--space-3);
+  animation: fadeIn 0.2s;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 
 .noteInput {
   flex: 1;

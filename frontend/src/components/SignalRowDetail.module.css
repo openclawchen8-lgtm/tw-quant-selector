@@ -60,18 +60,9 @@
   text-align: center;
 }
 
-.factorBarBg {
-  flex: 1;
-  height: 8px;
-  background: var(--bg-border-dim);
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.factorBarFill {
-  height: 100%;
-  border-radius: 4px;
-  transition: width 0.3s ease;
+.noData {
+  color: var(--text-muted);
+  font-size: 0.8rem;
 }
 
 .hint {

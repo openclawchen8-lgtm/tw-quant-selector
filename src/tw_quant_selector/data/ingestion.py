@@ -6,6 +6,7 @@ import structlog
 
 from tw_quant_selector.data.database import Database
 from tw_quant_selector.data.finmind_client import FinMindClient
+from tw_quant_selector.data.twstock_client import fetch_twse_daily_prices_all
 
 log = structlog.get_logger()
 
@@ -151,6 +152,23 @@ def update_daily_prices(db: Database, client: FinMindClient, stock_ids: list[str
             total += _upsert(conn, "daily_prices", rows, ["stock_id", "trade_date"])
     log.info("ingestion.daily_prices", stocks=len(stock_ids), rows=total)
     return total
+
+
+def update_daily_prices_from_twse(db: Database) -> tuple[int, str]:
+    """Update daily_prices using TWSE STOCK_DAY_ALL as primary source.
+    
+    Returns (rows_written, trade_date_iso).
+    Falls back to nothing — caller should use FinMind for stocks not in TWSE.
+    """
+    rows = fetch_twse_daily_prices_all()
+    if not rows:
+        return 0, ""
+    trade_date = rows[0]["trade_date"]
+    with db.connection() as conn:
+        n = _upsert(conn, "daily_prices", rows, ["stock_id", "trade_date"])
+        conn.commit()
+    log.info("ingestion.daily_prices.twse", rows=n, date=trade_date)
+    return n, trade_date
 
 
 def update_valuations(db: Database, client: FinMindClient, stock_ids: list[str], start: str, end: str):

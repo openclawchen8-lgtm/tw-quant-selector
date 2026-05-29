@@ -20,7 +20,7 @@ export default function StockDetail() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState<{
     info: StockInfo; prices: PricePoint[]; valuations: ValPoint[];
-    financials: FinPoint[]; revenue: RevPoint[];
+    financials: FinPoint[]; revenue: RevPoint[]; factor_scores: Record<string, number> | null;
   } | null>(null);
   const validTabs = ['factors', 'financials', 'history'] as const;
   const rawTab = searchParams.get('tab');
@@ -46,7 +46,7 @@ export default function StockDetail() {
     return <div className={styles.page}><EmptyState scenario="notrade">查無此股票資料</EmptyState></div>;
   }
 
-  const { info, prices, valuations, financials, revenue } = data;
+  const { info, prices, valuations, financials, revenue, factor_scores } = data;
   const lastPrice = prices[0]?.c;
 
   return (
@@ -80,32 +80,33 @@ export default function StockDetail() {
       {tab === 'factors' && (
         <div className={styles.tabContent}>
           <div className={styles.factorGrid}>
-            {['momentum', 'value', 'quality', 'growth'].map((f) => (
-              <div key={f} className={styles.sparkCard}>
-                <div className={styles.sparkHeader}>
-                  <span style={{ color: `var(--color-${f})`, fontWeight: 600 }}>
-                    {f === 'momentum' ? '動能' : f === 'value' ? '價值' : f === 'quality' ? '品質' : '成長'}
-                  </span>
-                  <FactorMiniBar name={f} score={1.2} />
-                  <span className="font-data" style={{ color: 'var(--text-secondary)' }}>1.84</span>
-                  <span className="font-data" style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-xs)' }}>91%</span>
+            {['momentum', 'value', 'quality', 'growth'].map((f) => {
+              const score = factor_scores?.[f] ?? 0;
+              return (
+                <div key={f} className={styles.sparkCard}>
+                  <div className={styles.sparkHeader}>
+                    <span style={{ color: `var(--color-${f})`, fontWeight: 600 }}>
+                      {f === 'momentum' ? '動能' : f === 'value' ? '價值' : f === 'quality' ? '品質' : '成長'}
+                    </span>
+                    <FactorMiniBar name={f} score={score} showLabels />
+                  </div>
+                  <div className={styles.sparkline}>
+                    <svg width="100%" height="80" viewBox="0 0 300 80" preserveAspectRatio="none">
+                      <defs>
+                        <linearGradient id={`grad-${f}`} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor={`var(--color-${f})`} stopOpacity="0.3" />
+                          <stop offset="100%" stopColor={`var(--color-${f})`} stopOpacity="0" />
+                        </linearGradient>
+                      </defs>
+                      <line x1="0" y1="40" x2="300" y2="40" stroke="var(--bg-border)" strokeWidth="1" strokeDasharray="4 2" />
+                      <path d={generateSparklinePath(20)} fill={`url(#grad-${f})`} />
+                      <path d={generateSparklinePath(20)} fill="none" stroke={`var(--color-${f})`} strokeWidth="1.5" className="sparkline-path" style={{ '--path-len': '400' } as React.CSSProperties} />
+                      <circle cx="300" cy="30" r="3" fill={`var(--color-${f})`} />
+                    </svg>
+                  </div>
                 </div>
-                <div className={styles.sparkline}>
-                  <svg width="100%" height="80" viewBox="0 0 300 80" preserveAspectRatio="none">
-                    <defs>
-                      <linearGradient id={`grad-${f}`} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={`var(--color-${f === 'momentum' || f === 'value' || f === 'quality' || f === 'growth' ? 'bull' : 'bull'}-dim)`} stopOpacity="0.3" />
-                        <stop offset="100%" stopColor={`var(--color-${f}-dim)`} stopOpacity="0" />
-                      </linearGradient>
-                    </defs>
-                    <line x1="0" y1="40" x2="300" y2="40" stroke="var(--bg-border)" strokeWidth="1" strokeDasharray="4 2" />
-                    <path d={generateSparklinePath(20)} fill={`url(#grad-${f})`} />
-                    <path d={generateSparklinePath(20)} fill="none" stroke={`var(--color-${f})`} strokeWidth="1.5" className="sparkline-path" style={{ '--path-len': '400' } as React.CSSProperties} />
-                    <circle cx="300" cy="30" r="3" fill={`var(--color-${f})`} />
-                  </svg>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

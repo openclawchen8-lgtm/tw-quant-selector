@@ -7,6 +7,7 @@ from tw_quant_selector.data.database import Database
 from tw_quant_selector.data.finmind_client import FinMindClient
 from tw_quant_selector.data.ingestion import (
     update_daily_prices,
+    update_daily_prices_from_twse,
     update_valuations,
     update_monthly_revenue,
     update_financials,
@@ -201,14 +202,41 @@ def run_daily_update(db: Database, client: FinMindClient, run_date: date | None 
     print(f"🔄 開始下載資料集...")
     print(f"{'─'*60}")
 
+    # ── Primary: TWSE for ALL stocks' latest prices (no rate limit) ──
+    twse_date = None
     try:
-        print(f"   [1/4] 下載股價 (price) for {len(finmind_valid)} 檔股票...")
-        n = update_daily_prices(db, client, finmind_valid, price_start, run_date)
-        results["datasets"]["price"] = n
-        print(f"   ✅ 股價完成: {n} 筆記錄")
+        print(f"   [1a/4] 從 TWSE 取得所有股票最新股價...")
+        n_twse, twse_date = update_daily_prices_from_twse(db)
+        print(f"   ✅ TWSE 股價完成: {n_twse} 筆記錄 (日期: {twse_date})")
     except Exception as e:
-        print(f"   ❌ 股價失敗: {e}")
-        log.error("scheduler.price_failed", error=str(e))
+        print(f"   ⚠️ TWSE 股價失敗，將以 FinMind 處理: {e}")
+        log.warning("scheduler.twse_price_failed", error=str(e))
+
+    # ── Fallback: FinMind for today's batch stocks TWSE didn't cover ──
+    finmind_needed = []
+    if twse_date:
+        with db.connection() as conn:
+            for sid in finmind_valid:
+                row = conn.execute(
+                    "SELECT 1 FROM daily_prices WHERE stock_id = ? AND trade_date = ?",
+                    [sid, twse_date]
+                ).fetchone()
+                if not row:
+                    finmind_needed.append(sid)
+    else:
+        finmind_needed = finmind_valid
+
+    if finmind_needed:
+        try:
+            print(f"   [1b/4] 從 FinMind 補下載 {len(finmind_needed)} 檔股票股價...")
+            n = update_daily_prices(db, client, finmind_needed, price_start, run_date)
+            results["datasets"]["price"] = (results["datasets"].get("price", 0) or 0) + n
+            print(f"   ✅ FinMind 股價完成: {n} 筆記錄")
+        except Exception as e:
+            print(f"   ❌ FinMind 股價失敗: {e}")
+            log.error("scheduler.finmind_price_failed", error=str(e))
+    else:
+        print(f"   ℹ️ 所有 TWSE 股票已更新，無需 FinMind 補下載")
 
     try:
         print(f"   [2/4] 下載本益比 (per) for {len(finmind_valid)} 檔股票...")

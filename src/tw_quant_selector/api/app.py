@@ -54,6 +54,9 @@ class SignalItem(BaseModel):
     rank_change: Optional[int] = None
     consecutive_days: Optional[int] = None
     factor_scores: Optional[dict[str, float]] = None
+    close_price: Optional[float] = None
+    change: Optional[float] = None
+    change_pct: Optional[float] = None
 
 
 class SignalResponse(BaseModel):
@@ -302,6 +305,23 @@ def stock_detail(stock_id: str):
         "SELECT year_month, revenue, revenue_yoy FROM monthly_revenue WHERE stock_id = ? ORDER BY year_month DESC LIMIT 12",
         [stock_id]
     ).fetchall()
+    sig = db.execute(
+        """SELECT m.score AS momentum, v.score AS value, q.score AS quality, g.score AS growth
+           FROM (SELECT COALESCE(MAX(signal_date), CURRENT_DATE) AS max_date FROM signals WHERE stock_id = ?) sd
+           LEFT JOIN signals m ON m.signal_date = sd.max_date AND m.stock_id = ? AND m.strategy = 'momentum'
+           LEFT JOIN signals v ON v.signal_date = sd.max_date AND v.stock_id = ? AND v.strategy = 'value'
+           LEFT JOIN signals q ON q.signal_date = sd.max_date AND q.stock_id = ? AND q.strategy = 'quality'
+           LEFT JOIN signals g ON g.signal_date = sd.max_date AND g.stock_id = ? AND g.strategy = 'growth'""",
+        [stock_id, stock_id, stock_id, stock_id, stock_id]
+    ).fetchone()
+    factor_scores = None
+    if sig:
+        fs = {}
+        for k, v in zip(['momentum', 'value', 'quality', 'growth'], sig):
+            if v is not None:
+                fs[k] = float(v)
+        if fs:
+            factor_scores = fs
     return api_response({
         "info": {"stock_id": info[0], "name": info[1], "market": info[2], "is_etf": info[3], "industry": info[4]},
         "prices": [{"d": str(r[0]), "o": float(r[1]) if r[1] else None, "h": float(r[2]) if r[2] else None,
@@ -312,6 +332,7 @@ def stock_detail(stock_id: str):
                         "roe": float(r[3]) if r[3] else None, "gm": float(r[4]) if r[4] else None,
                         "de": float(r[5]) if r[5] else None} for r in fins],
         "revenue": [{"ym": r[0], "rev": r[1], "yoy": float(r[2]) if r[2] else None} for r in revs],
+        "factor_scores": factor_scores,
     })
 
 
@@ -504,7 +525,8 @@ def _get_signals(signal_date: date, strategy: str, top_n: int, include_etf: bool
     rows = db.execute(
         """SELECT s.stock_id, st.stock_name, s.score, s.rank,
                   m.score AS momentum, v.score AS value, q.score AS quality, g.score AS growth,
-                  p.rank AS prev_rank
+                  p.rank AS prev_rank,
+                  dp.close, dpy.close AS prev_close
            FROM signals s
            LEFT JOIN stocks st ON s.stock_id = st.stock_id
            LEFT JOIN signals m ON m.signal_date = s.signal_date AND m.stock_id = s.stock_id AND m.strategy = 'momentum'
@@ -512,6 +534,8 @@ def _get_signals(signal_date: date, strategy: str, top_n: int, include_etf: bool
            LEFT JOIN signals q ON q.signal_date = s.signal_date AND q.stock_id = s.stock_id AND q.strategy = 'quality'
            LEFT JOIN signals g ON g.signal_date = s.signal_date AND g.stock_id = s.stock_id AND g.strategy = 'growth'
            LEFT JOIN signals p ON p.signal_date = ? AND p.stock_id = s.stock_id AND p.strategy = s.strategy
+           LEFT JOIN daily_prices dp ON dp.stock_id = s.stock_id AND dp.trade_date = (SELECT MAX(trade_date) FROM daily_prices WHERE stock_id = s.stock_id)
+           LEFT JOIN daily_prices dpy ON dpy.stock_id = s.stock_id AND dpy.trade_date = (SELECT MAX(trade_date) FROM daily_prices WHERE stock_id = s.stock_id AND trade_date < (SELECT MAX(trade_date) FROM daily_prices WHERE stock_id = s.stock_id))
            WHERE s.signal_date = ? AND s.strategy = ?
            ORDER BY s.rank LIMIT ?""",
         [prev, signal_date, strategy, top_n],
@@ -530,12 +554,20 @@ def _get_signals(signal_date: date, strategy: str, top_n: int, include_etf: bool
         current_rank = r[3] or 0
         rank_change = (prev_rank - current_rank) if prev_rank is not None else None
 
+        close = float(r[9]) if r[9] else None
+        prev_close = float(r[10]) if r[10] else None
+        change = round(close - prev_close, 2) if close is not None and prev_close is not None else None
+        change_pct = round((change / prev_close) * 100, 2) if change is not None and prev_close else None
+
         item = SignalItem(
             stock_id=r[0], name=r[1],
             score=float(r[2]) if r[2] else 0,
             rank=current_rank,
             rank_change=rank_change,
             factor_scores=factor_scores if factor_scores else None,
+            close_price=close,
+            change=change,
+            change_pct=change_pct,
         )
         if r[0] in {"0050", "0051", "0052", "0056", "00878", "00881", "006208"}:
             etfs.append(item)
@@ -546,7 +578,7 @@ def _get_signals(signal_date: date, strategy: str, top_n: int, include_etf: bool
     return SignalResponse(date=signal_date.isoformat(), stocks=stocks[:top_n], etfs=etfs)
 
 
-@app.post("/api/v1/backtest/run", response_model=BacktestResponse)
+@app.post("/api/v1/backtest/run")
 def start_backtest(req: BacktestRequest):
     run_id = str(uuid.uuid4())
     start = date.fromisoformat(req.start_date)
@@ -570,6 +602,17 @@ def backtest_history():
         "sharpe": float(r[6]) if r[6] else None,
         "max_drawdown": float(r[7]) if r[7] else None,
     } for r in rows])
+
+
+@app.delete("/api/v1/backtest/{run_id}")
+def delete_backtest(run_id: str):
+    row = db.execute("SELECT 1 FROM backtest_runs WHERE run_id = ?", [run_id]).fetchone()
+    if not row:
+        raise HTTPException(404, "Backtest run not found")
+    db.execute("DELETE FROM backtest_equity WHERE run_id = ?", [run_id])
+    db.execute("DELETE FROM backtest_runs WHERE run_id = ?", [run_id])
+    print(f"Deleted backtest run {run_id}")
+    return api_response({"deleted": run_id})
 
 
 @app.get("/api/v1/backtest/{run_id}")

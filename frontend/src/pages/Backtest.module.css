@@ -116,7 +116,7 @@
 .historyList { max-height: 240px; overflow-y: auto; }
 .historyItem {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
   gap: var(--space-2);
   padding: var(--space-2);
   border-radius: var(--radius-tag);
@@ -124,8 +124,26 @@
   font-size: var(--font-size-sm);
 }
 .historyItem:hover { background: var(--bg-elevated); }
-.historyDate { color: var(--text-muted); }
+.historyDate { color: var(--text-muted); margin-right: auto; }
 .muted { color: var(--text-muted); font-size: var(--font-size-sm); }
+
+.deleteBtn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 2px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.historyItem:hover .deleteBtn {
+  opacity: 1;
+}
+.deleteBtn:hover {
+  color: var(--color-bear-text);
+}
 
 /* Right panel */
 .rightPanel {

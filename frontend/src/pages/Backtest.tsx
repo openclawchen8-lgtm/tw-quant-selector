@@ -109,6 +109,18 @@ export default function Backtest() {
     }
   };
 
+  const deleteRun = async (runId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm('確定刪除此回測記錄？')) return;
+    try {
+      await apiFetch(`/api/v1/backtest/${runId}`, { method: 'DELETE' });
+      setHistory(prev => prev.filter(r => r.run_id !== runId));
+      if (result?.run_id === runId) setResult(null);
+    } catch (err: any) {
+      alert('刪除失敗：' + err.message);
+    }
+  };
+
   // T052: 載入比較資料
   useEffect(() => {
     if (compareIds.length === 2) {
@@ -183,27 +195,32 @@ export default function Backtest() {
               <p className={styles.muted}>尚無回測紀錄</p>
             ) : (
               <div className={styles.historyList}>
-                {history.map((r) => (
-                  <div 
-                    key={r.run_id} 
-                    className={`${styles.historyItem} ${compareIds.includes(r.run_id) ? styles.selected : ''}`}
-                    onClick={() => toggleCompare(r.run_id)}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={compareIds.includes(r.run_id)}
-                      onChange={() => {}}
-                      onClick={(e) => e.stopPropagation()}
-                      className={styles.historyCheckbox}
-                    />
-                    <span className={styles.historyDate}>{r.start_date || ''}</span>
-                    <span className={`font-data ${colorize(r.cagr, 'percent').className}`}>
-                      {formatNumber(r.cagr, { type: 'percent' })}
-                    </span>
-                    <span className="font-data" style={{ color: 'var(--text-muted)' }}>
-                      Sharpe {formatNumber(r.sharpe, { type: 'score' })}
-                    </span>
-                  </div>
+                  {history.map((r) => (
+                    <div 
+                      key={r.run_id} 
+                      className={`${styles.historyItem} ${compareIds.includes(r.run_id) ? styles.selected : ''}`}
+                      onClick={() => toggleCompare(r.run_id)}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={compareIds.includes(r.run_id)}
+                        onChange={() => {}}
+                        onClick={(e) => e.stopPropagation()}
+                        className={styles.historyCheckbox}
+                      />
+                      <span className={styles.historyDate}>{r.start_date || ''}</span>
+                      <span className={`font-data ${colorize(r.cagr, 'percent').className}`}>
+                        {formatNumber(r.cagr, { type: 'percent' })}
+                      </span>
+                      <span className="font-data" style={{ color: 'var(--text-muted)' }}>
+                        Sharpe {formatNumber(r.sharpe, { type: 'score' })}
+                      </span>
+                      <button
+                        className={styles.deleteBtn}
+                        onClick={(e) => deleteRun(r.run_id, e)}
+                        title="刪除此記錄"
+                      >✕</button>
+                    </div>
                 ))}
               </div>
             )}

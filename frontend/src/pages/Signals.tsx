@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { fetchLatestSignals } from '../api/client';
 import BaseTable from '../components/BaseTable';
@@ -9,7 +9,7 @@ import MissingDataSummary from '../components/MissingDataSummary';
 import { useToast } from '../components/Toast';
 import { formatNumber, colorize } from '../utils/format';
 import SignalRowDetail from '../components/SignalRowDetail';
-import type { ColumnDef, SortingState } from '@tanstack/react-table';
+import type { ColumnDef } from '@tanstack/react-table';
 import styles from './Signals.module.css';
 
 interface SignalItem {
@@ -20,6 +20,9 @@ interface SignalItem {
   rank_change?: number | null;
   consecutive_days?: number | null;
   factor_scores?: Record<string, number> | null;
+  close_price?: number | null;
+  change?: number | null;
+  change_pct?: number | null;
 }
 
 export default function Signals() {
@@ -28,8 +31,8 @@ export default function Signals() {
   const [data, setData] = useState<{ date: string; stocks: SignalItem[]; etfs: SignalItem[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [sortKey, setSortKey] = useState(searchParams.get('sort') || 'score');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>(searchParams.get('dir') === 'asc' ? 'asc' : 'desc');
+  const sortKey = searchParams.get('sort') || 'score';
+  const sortDir = (searchParams.get('dir') as 'asc' | 'desc') || 'desc';
   const [showEtf, setShowEtf] = useState(searchParams.get('etf') !== '0');
   const [expandedRow, setExpandedRow] = useState<string | null>(searchParams.get('stock'));
   const [strategy, setStrategy] = useState(searchParams.get('strategy') || 'composite');
@@ -57,26 +60,9 @@ export default function Signals() {
   }, [sortKey, sortDir, strategy, showEtf, expandedRow]);
 
   const allItems = [...(data?.stocks || []), ...(showEtf ? data?.etfs || [] : [])];
-  
-  // Clean manual sorting logic
-  const sortedData = [...allItems].sort((a, b) => {
-    const m = sortDir === 'asc' ? 1 : -1;
-    let valA: any, valB: any;
-    
-    if (['momentum', 'value', 'quality', 'growth'].includes(sortKey)) {
-      valA = a.factor_scores?.[sortKey] ?? (a.score * (sortKey === 'momentum' ? 1 : sortKey === 'value' ? 0.8 : sortKey === 'quality' ? 0.6 : 0.4));
-      valB = b.factor_scores?.[sortKey] ?? (b.score * (sortKey === 'momentum' ? 1 : sortKey === 'value' ? 0.8 : sortKey === 'quality' ? 0.6 : 0.4));
-    } else {
-      valA = (a as any)[sortKey];
-      valB = (b as any)[sortKey];
-    }
-
-    if (typeof valA === 'string') return valA.localeCompare(valB) * m;
-    return ((valA ?? 0) - (valB ?? 0)) * m;
-  });
 
   const etfIds = new Set(data?.etfs?.map((e) => e.stock_id) || []);
-  const displayData = sortedData;
+  const displayData = allItems;
 
   const today = data?.date || new Date().toISOString().slice(0, 10);
 
@@ -101,16 +87,6 @@ export default function Signals() {
       setShowExport(false);
     }
   };
-
-  const sortState: SortingState = [{ id: sortKey, desc: sortDir === 'desc' }];
-
-  const handleSortChange = useCallback((state: SortingState) => {
-    const s = state[0];
-    if (s) {
-      setSortKey(s.id);
-      setSortDir(s.desc ? 'desc' : 'asc');
-    }
-  }, []);
 
   const strategyLabel = (s: string) => {
     const map: Record<string, string> = { composite: '全部策略', momentum: '動能', value: '價值', quality: '品質', growth: '成長' };
@@ -159,14 +135,30 @@ export default function Signals() {
     {
       id: 'close_price',
       header: '收盤價',
+      accessorKey: 'close_price',
       meta: { width: 88, align: 'right' as const },
-      cell: () => <span className="font-data">—</span>,
+      cell: ({ getValue }) => {
+        const v = getValue<number | null>();
+        return v != null ? <span className="font-data">{formatNumber(v, { type: 'price' })}</span> : <span className="font-data">—</span>;
+      },
     },
     {
       id: 'change',
       header: '漲跌',
+      accessorFn: (row: SignalItem) => row.change ?? 0,
       meta: { width: 80, align: 'right' as const },
-      cell: () => <span className="font-data" style={{ color: 'var(--color-bull-text)' }}>—</span>,
+      cell: ({ row }) => {
+        const c = row.original.change;
+        const cp = row.original.change_pct;
+        if (c == null) return <span className="font-data">—</span>;
+        const cl = c > 0 ? 'var(--color-bull-text)' : c < 0 ? 'var(--color-bear-text)' : 'var(--text-muted)';
+        const sym = c > 0 ? '▲' : c < 0 ? '▼' : '—';
+        return (
+          <span className="font-data" style={{ color: cl }}>
+            {sym} {formatNumber(Math.abs(c), { type: 'price' })}{cp != null ? ` (${cp > 0 ? '+' : ''}${cp.toFixed(1)}%)` : ''}
+          </span>
+        );
+      },
     },
     makeFactorCol('momentum', '動能', 1),
     makeFactorCol('value', '價值', 0.8),
@@ -194,6 +186,7 @@ export default function Signals() {
     {
       id: 'holdings',
       header: '持倉',
+      enableSorting: false,
       meta: { width: 60 },
       cell: () => <span style={{ display: 'block', textAlign: 'center', color: 'var(--text-muted)' }}>○</span>,
     },
@@ -230,8 +223,6 @@ export default function Signals() {
             data={displayData}
             loading={loading}
             emptyMessage="今日沒有符合條件的選股結果"
-            sortState={sortState}
-            onSortChange={handleSortChange}
             getRowId={(row) => row.stock_id}
             expandedRow={expandedRow}
             onExpandedChange={(id) => setExpandedRow(id)}

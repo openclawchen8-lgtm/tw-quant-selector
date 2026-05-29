@@ -10,6 +10,11 @@ UVICORN_BIN="$VENV_DIR/bin/uvicorn"
 NPM_BIN="npm"
 BG_LOG_DIR="/tmp/tw-quant"
 
+# 載入 .env，並 auto-export 方便子行程讀取
+if [ -f "$PROJECT_DIR/.env" ]; then
+  set -a; source "$PROJECT_DIR/.env"; set +a
+fi
+
 mkdir -p "$BG_LOG_DIR"
 
 # ─── 工具函數 ───
@@ -192,10 +197,26 @@ for k, v in metrics.items():
 run_scheduler() {
   header "執行排程器 (Ingest Next Bucket)"
   check_venv || return 1
-  if [ -z "${FINMIND_TOKEN:-}" ]; then
-    echo "❌ 需要設定 FINMIND_TOKEN 環境變數"
-    return 1
+#  if [ -z "${FINMIND_TOKEN:-}" ]; then
+#    echo "❌ 需要設定 FINMIND_TOKEN 環境變數"
+#    return 1
+#  fi
+
+  # 清除殘留的 scheduler process，避免 DuckDB 鎖衝突
+  local old_pids
+  old_pids=$(pgrep -f "run_daily_pipeline\.py" 2>/dev/null || true)
+  if [ -n "$old_pids" ]; then
+    warn "發現殘留 scheduler (PID $old_pids)，強制終止..."
+    kill $old_pids 2>/dev/null || true
+    sleep 2
+    # 確認真的死了，不死就 SIGKILL
+    old_pids=$(pgrep -f "run_daily_pipeline\.py" 2>/dev/null || true)
+    [ -n "$old_pids" ] && kill -9 $old_pids 2>/dev/null || true
   fi
+
+  # 關掉本機 API server 釋放 DuckDB 鎖
+  stop_server 2>/dev/null || true
+  sleep 1
 
   local log="$BG_LOG_DIR/scheduler.log"
   touch "$log"
@@ -225,6 +246,14 @@ docker_down() {
   header "Docker Compose Down"
   docker compose down
   ok "Container stopped"
+}
+
+docker_scheduler() {
+  header "Docker Run Scheduler"
+  docker compose down app 2>/dev/null || true
+  docker compose run --rm --build scheduler "$@"
+  docker compose up -d app
+  ok "排程器執行完畢，App 已重啟"
 }
 
 show_status() {
@@ -272,7 +301,7 @@ MENU_ITEMS=(
   "🛑 關閉伺服器"
   "🧪 執行所有測試"
   "📈 執行回測 (2020-2024)"
-  "📡 執行排程器 (Ingest)"
+  "📡 Docker Run Scheduler"
   "🐳 Docker Build"
   "🐳 Docker Compose Up"
   "🛑 Docker Compose Down"
@@ -280,10 +309,10 @@ MENU_ITEMS=(
   "👋 離開"
 )
 
-MENU_FUNCS=(start_server restart_server stop_server run_tests run_backtest run_scheduler docker_build docker_up docker_down show_status)
+MENU_FUNCS=(start_server restart_server stop_server run_tests run_backtest docker_scheduler docker_build docker_up docker_down show_status)
 
 # 背景執行型（不阻塞選單）
-BG_FUNCS_REGEX="^(start_server|restart_server|run_scheduler)$"
+BG_FUNCS_REGEX="^(start_server|restart_server)$"
 
 menu_loop() {
   local sel=0
@@ -370,11 +399,12 @@ if [ $# -gt 0 ]; then
     test|tests)   shift; run_tests "$@" ;;
     backtest)     run_backtest ;;
     schedule|scheduler) run_scheduler ;;
+    docker-scheduler)  docker_scheduler ;;
     docker-build) docker_build ;;
     docker-up)    docker_up ;;
     docker-down)  docker_down ;;
     status)       show_status ;;
-    *)            echo "用法: $0 {start|restart|stop|test|backtest|scheduler|docker-build|docker-up|docker-down|status}"; exit 1 ;;
+    *)            echo "用法: $0 {start|restart|stop|test|backtest|scheduler|docker-scheduler|docker-build|docker-up|docker-down|status}"; exit 1 ;;
   esac
   exit 0
 fi

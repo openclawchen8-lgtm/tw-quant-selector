@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { fetchStockDetail } from '../api/client';
 import { formatNumber } from '../utils/format';
+import FactorMiniBar from './FactorMiniBar';
 import styles from './SignalRowDetail.module.css';
 
 interface SignalRowDetailProps {
@@ -59,18 +60,17 @@ export default function SignalRowDetail({ stockId }: SignalRowDetailProps) {
         </div>
         <div className={styles.factorGrid}>
           {['momentum', 'value', 'quality', 'growth'].map((f) => {
-             const score = data.info?.is_etf ? 0 : (Math.random() * 100); // Placeholder until history API has data
+             const score = data.factor_scores?.[f] ?? null;
              return (
               <div key={f} className={styles.factorItem}>
                 <span className={styles.factorName} style={{ color: `var(--color-${f})` }}>
-                  {f[0].toUpperCase()}
+                  {f === 'momentum' ? '動能' : f === 'value' ? '價值' : f === 'quality' ? '品質' : '成長'}
                 </span>
-                <div className={styles.factorBarBg}>
-                  <div 
-                    className={styles.factorBarFill} 
-                    style={{ width: `${score}%`, backgroundColor: `var(--color-${f})` }} 
-                  />
-                </div>
+                {score != null ? (
+                  <FactorMiniBar name={f} score={score} showLabels />
+                ) : (
+                  <span className={styles.noData}>—</span>
+                )}
               </div>
              );
           })}

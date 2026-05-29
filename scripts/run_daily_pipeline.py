@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from tw_quant_selector.data.database import Database
 from tw_quant_selector.data.finmind_client import FinMindClient
 from tw_quant_selector.data.scheduler import run_daily_update
-from tw_quant_selector.data.twse_client import update_stock_list, MarketScope
+from tw_quant_selector.data.twstock_client import update_stock_list, MarketScope
 from tw_quant_selector.strategies.combiner import compute_composite_scores
 
 parser = argparse.ArgumentParser(description="Daily pipeline")
@@ -40,9 +40,9 @@ db = Database(DB_PATH)
 db.init_db()
 client = FinMindClient(token)
 
-print(f"📋 Step 0: Sync stock list (scope={args.scope}) from TWSE/TPEX")
-n_stocks = update_stock_list(db, scope=args.scope)
-print(f"  {n_stocks} stocks in DB")
+print(f"📋 Step 0: Sync stock list from twstock.codes")
+n_stocks = update_stock_list(db)
+print(f"  {n_stocks} stocks in DB (scope={args.scope})")
 
 print(f"🏭 Step 1: Ingest data for {run_date}")
 ingest = run_daily_update(db, client, run_date)

@@ -18,7 +18,12 @@ interface SignalItem {
   name?: string;
   score: number;
   rank: number;
+  rank_change?: number | null;
+  consecutive_days?: number | null;
   factor_scores?: Record<string, number> | null;
+  close_price?: number | null;
+  change?: number | null;
+  change_pct?: number | null;
 }
 
 interface SignalsData {
@@ -91,14 +96,30 @@ export default function Dashboard() {
     {
       id: 'close_price',
       header: '收盤價',
+      accessorKey: 'close_price',
       meta: { width: 88, align: 'right' as const },
-      cell: () => <span className="font-data">—</span>,
+      cell: ({ getValue }) => {
+        const v = getValue<number | null>();
+        return v != null ? <span className="font-data">{formatNumber(v, { type: 'price' })}</span> : <span className="font-data">—</span>;
+      },
     },
     {
       id: 'change',
       header: '今日漲跌',
+      accessorFn: (row: SignalItem) => row.change ?? 0,
       meta: { width: 80, align: 'right' as const },
-      cell: () => <span className="font-data" style={{ color: 'var(--color-bull-text)' }}>—</span>,
+      cell: ({ row }) => {
+        const c = row.original.change;
+        const cp = row.original.change_pct;
+        if (c == null) return <span className="font-data">—</span>;
+        const cl = c > 0 ? 'var(--color-bull-text)' : c < 0 ? 'var(--color-bear-text)' : 'var(--text-muted)';
+        const sym = c > 0 ? '▲' : c < 0 ? '▼' : '—';
+        return (
+          <span className="font-data" style={{ color: cl }}>
+            {sym} {formatNumber(Math.abs(c), { type: 'price' })}{cp != null ? ` (${cp > 0 ? '+' : ''}${cp.toFixed(1)}%)` : ''}
+          </span>
+        );
+      },
     },
     {
       id: 'momentum',

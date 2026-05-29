@@ -18,9 +18,10 @@ const FACTOR_LABELS: Record<string, string> = {
 interface FactorMiniBarProps {
   name: string;
   score: number;
+  showLabels?: boolean;
 }
 
-export default function FactorMiniBar({ name, score }: FactorMiniBarProps) {
+export default function FactorMiniBar({ name, score, showLabels }: FactorMiniBarProps) {
   const pct = Math.max(0, Math.min(100, ((score + 3) / 6) * 100));
   const extreme = score > 2;
   const color = FACTOR_COLORS[name] || '#666';
@@ -28,7 +29,7 @@ export default function FactorMiniBar({ name, score }: FactorMiniBarProps) {
   const label = FACTOR_LABELS[name] || name;
   return (
     <div
-      className={`${styles.bar} font-data`}
+      className={`${styles.bar} ${showLabels ? styles.withLabels : ''} font-data`}
       role="img"
       aria-label={`${label} 因子：分數 ${formatNumber(score, { type: 'score' })}，百分位 ${pct.toFixed(1)}%，趨勢 ${score > 0 ? '上升' : '下降'}`}
     >
@@ -37,6 +38,12 @@ export default function FactorMiniBar({ name, score }: FactorMiniBarProps) {
         style={{ width: `${pct}%`, backgroundColor: color }}
         aria-hidden="true"
       />
+      {showLabels && (
+        <div className={styles.labels}>
+          <span className={styles.scoreVal} style={{ color }}>{formatNumber(score, { type: 'score' })}</span>
+          <span className={styles.pctVal}>{pct.toFixed(0)}%</span>
+        </div>
+      )}
     </div>
   );
 }
