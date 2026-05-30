@@ -4,9 +4,10 @@
     "avg_cost": 89.21,
     "shares": 1303,
     "is_etf": true,
-    "pl_pct_thod": 10.0,
-    "pl_thod": 10000.0,
     "market": "TSE",
+    "pl_pct_thod": 21.0,
+    "pl_thod": 10001.0,
+    "alert_enabled": true,
     "current_price": 105.4
   },
   {
@@ -14,9 +15,10 @@
     "avg_cost": 29.13,
     "shares": 2000,
     "is_etf": true,
-    "pl_pct_thod": 10.0,
-    "pl_thod": 10000.0,
     "market": "TSE",
+    "pl_pct_thod": 12.0,
+    "pl_thod": 20002.0,
+    "alert_enabled": true,
     "current_price": 31.54
   },
   {
@@ -24,9 +26,10 @@
     "avg_cost": 2271.97,
     "shares": 40,
     "is_etf": false,
-    "pl_pct_thod": 10.0,
-    "pl_thod": 10000.0,
     "market": "TSE",
+    "pl_pct_thod": 33.0,
+    "pl_thod": 10003.0,
+    "alert_enabled": true,
     "current_price": 2355.0
   },
   {
@@ -34,9 +37,10 @@
     "avg_cost": 79.0,
     "shares": 417,
     "is_etf": false,
-    "pl_pct_thod": 10.0,
-    "pl_thod": 10000.0,
     "market": "TSE",
+    "pl_pct_thod": 14.0,
+    "pl_thod": 10004.0,
+    "alert_enabled": true,
     "current_price": 85.7
   }
 ]

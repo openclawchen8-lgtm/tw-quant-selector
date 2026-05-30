@@ -154,6 +154,7 @@
   border-radius: var(--radius-tag);
   transition: background 0.15s;
   line-height: 1;
+  color: var(--text-primary);
 }
 .alertBtn:hover { background: var(--bg-elevated); }
 .alertBreached { color: var(--color-neutral); }
@@ -331,3 +332,55 @@
   font-variant-numeric: tabular-nums;
 }
 .detailRow:hover td { background: var(--bg-surface); }
+
+.alertLogToggle {
+  display: block;
+  width: 100%;
+  margin-top: var(--space-3);
+  padding: var(--space-2);
+  text-align: center;
+  background: none;
+  border: 1px solid var(--bg-border);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+}
+.alertLogToggle:hover { background: var(--bg-elevated); }
+.alertLogPanel {
+  border: 1px solid var(--bg-border);
+  border-top: none;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  overflow: hidden;
+}
+.alertLogEmpty {
+  text-align: center;
+  padding: var(--space-4);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+.alertLogTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-xs);
+}
+.alertLogTable th {
+  background: var(--bg-overlay);
+  padding: var(--space-1) var(--space-2);
+  text-align: left;
+  font-weight: 500;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--bg-border);
+  white-space: nowrap;
+}
+.alertLogTable td {
+  padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--bg-border);
+  vertical-align: middle;
+}
+.alertLogTable th[data-type="number"],
+.alertLogTable td[data-type="number"] {
+  text-align: right;
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+}

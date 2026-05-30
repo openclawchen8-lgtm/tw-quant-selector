@@ -8,7 +8,7 @@ import FactorMiniBar from '../components/FactorMiniBar';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { useToast } from '../components/Toast';
 import { formatNumber } from '../utils/format';
-import { colorForChange, trendIcon } from '../utils/color';
+import { colorForChange, trendIcon, FACTOR_LABELS } from '../utils/color';
 import MarketStatus from '../components/MarketStatus';
 import SignalRowDetail from '../components/SignalRowDetail';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -247,7 +247,7 @@ export default function Dashboard() {
           <div className={styles.factorContrib}>
             {['momentum', 'value', 'quality', 'growth'].map((f) => (
               <div key={f} className={styles.factorRow}>
-                <span className={styles.factorLabel} style={{ color: `var(--color-${f})` }}>{f}</span>
+                <span className={styles.factorLabel} style={{ color: `var(--color-${f})` }}>{FACTOR_LABELS[f]}</span>
                 <div className={styles.factorBarBg}>
                   <div className={styles.factorBarFill} style={{
                     width: `${(f === 'momentum' ? 30 : f === 'value' ? 25 : f === 'quality' ? 25 : 20)}%`,

@@ -10,8 +10,8 @@
 您可以直接編輯專案根目錄下的 `stock_monitor.csv`，格式如下：
 
 ```csv
-stock_id, avg_cost, shares, is_etf, pl_pct_thod, pl_thod
-0050, 89.21, 1303, TRUE, 10, 10000
+stock_id, avg_cost, shares, is_etf, pl_pct_thod, pl_thod, alert_enabled
+0050, 89.21, 1303, TRUE, 10, 10000, TRUE
 ```
 
 - **stock_id**: 股票代碼
@@ -20,14 +20,17 @@ stock_id, avg_cost, shares, is_etf, pl_pct_thod, pl_thod
 - **is_etf**: 是否為 ETF (TRUE/FALSE)
 - **pl_pct_thod**: 百分比報酬率警報門檻 (%)
 - **pl_thod**: 金額損益警報門檻 (元)
+- **alert_enabled**: 啟用監控 (TRUE/FALSE，可省略，預設 TRUE)
+
+> 也可透過前端 Portfolio 頁面的「設定門檻」面板調整，設定會寫入 DuckDB。
 
 執行同步：
 ```bash
 # 1. 編輯後執行同步腳本
-python3 scripts/sync_portfolio_csv.py
+./.venv/bin/python3 scripts/sync_portfolio_csv.py
 
 # 2. 啟動即時監控
-python3 scripts/check_live_alerts.py
+./.venv/bin/python3 scripts/check_live_alerts.py
 ```
 
 ### 方法二：透過資料庫更新 (進階)

@@ -7,8 +7,8 @@ import { trendIcon } from '../utils/color';
 import styles from './Portfolio.module.css';
 
 const API = 'http://localhost:8000';
-async function apiFetch<T>(path: string): Promise<T> {
-  const res = await fetch(`${API}${path}`);
+async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${API}${path}`, init);
   if (!res.ok) throw new Error(`API ${res.status}`);
   const body = await res.json();
   if (body.error) throw new Error(body.error.message || 'API error');
@@ -32,6 +32,7 @@ interface AggregatedHolding {
   name: string;
   pl_pct_thod: number | null;
   pl_thod: number | null;
+  alert_enabled: boolean;
 }
 
 interface StockAlertConfig {
@@ -45,14 +46,10 @@ interface GlobalThresholds {
   pl_percent_threshold: number | null;
 }
 
-const STORAGE_KEY = 'tw_quant_lots';
 const ALERT_CONFIG_KEY = 'tw_quant_alert_configs';
 
 function loadLots(): Lot[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
+  return [];
 }
 
 function loadAlertConfigs(): Record<string, StockAlertConfig> {
@@ -70,16 +67,12 @@ export default function Portfolio() {
 
   const refreshPortfolio = useCallback(async () => {
     try {
-        const data = await apiFetch<AggregatedHolding[]>('/api/v1/portfolio');
+        const [data, lotsData] = await Promise.all([
+            apiFetch<AggregatedHolding[]>('/api/v1/portfolio'),
+            apiFetch<Lot[]>('/api/v1/lots')
+        ]);
         setHoldings(data);
-        const mappedLots: Lot[] = data.flatMap(h => ({
-            id: `${h.stock_id}-${Date.now()}`,
-            stock_id: h.stock_id,
-            date: new Date().toISOString().split('T')[0],
-            shares: h.totalShares,
-            cost: h.avgCost
-        }));
-        setLots(mappedLots);
+        setLots(lotsData);
         const ids = [...new Set(data.map((h) => h.stock_id))].join(',');
         if (ids) {
             const p = await apiFetch<Record<string, { name: string; close: number | null }>>(`/api/v1/stocks/prices?ids=${ids}`);
@@ -92,6 +85,22 @@ export default function Portfolio() {
 
   useEffect(() => {
     refreshPortfolio();
+  }, [refreshPortfolio]);
+
+  useEffect(() => {
+    const es = new EventSource(`${API}/api/v1/portfolio/events`);
+    es.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload.type === 'portfolio_update') {
+          refreshPortfolio();
+        }
+      } catch { /* ignore parse errors */ }
+    };
+    es.onerror = () => {
+      // EventSource auto-reconnects on error
+    };
+    return () => es.close();
   }, [refreshPortfolio]);
 
   const [cashBalance, setCashBalance] = useState(() => {
@@ -107,10 +116,12 @@ export default function Portfolio() {
   const [newRows, setNewRows] = useState<Set<string>>(new Set());
   const [errors, setErrors] = useState<Record<string, boolean>>({});
 
-  const [alertConfigs, setAlertConfigs] = useState<Record<string, StockAlertConfig>>(loadAlertConfigs);
   const [globalThresholds, setGlobalThresholds] = useState<GlobalThresholds>({ pl_threshold: null, pl_percent_threshold: null });
+  const [alertConfigs, setAlertConfigs] = useState<Record<string, StockAlertConfig>>(loadAlertConfigs);
   const [configuringStock, setConfiguringStock] = useState<string | null>(null);
   const [tempConfig, setTempConfig] = useState<StockAlertConfig | null>(null);
+  const [alertLog, setAlertLog] = useState<any[]>([]);
+  const [showAlertLog, setShowAlertLog] = useState(false);
 
   useEffect(() => {
     apiFetch<{ key: string; value: string | null }[]>('/api/v1/settings/alerts').then(data => {
@@ -123,12 +134,12 @@ export default function Portfolio() {
     }).catch(() => {});
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem(ALERT_CONFIG_KEY, JSON.stringify(alertConfigs));
-  }, [alertConfigs]);
-
-  useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(lots)); }, [lots]);
+  useEffect(() => { localStorage.setItem('tw_quant_alert_configs', JSON.stringify(alertConfigs)); }, [alertConfigs]);
   useEffect(() => { localStorage.setItem('tw_quant_cash', String(cashBalance)); }, [cashBalance]);
+
+  useEffect(() => {
+    apiFetch<any[]>('/api/v1/alerts/log').then(setAlertLog).catch(() => {});
+  }, []);
 
   const addLot = async () => {
     const sid = stockId.trim();
@@ -140,11 +151,12 @@ export default function Portfolio() {
     }
     setAdding(true);
     try {
-      await fetch(`${API}/api/v1/portfolio`, {
+      await fetch(`${API}/api/v1/lots`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stock_id: sid, shares: sh, cost: co, is_etf: false })
+        body: JSON.stringify({ stock_id: sid, date, shares: sh, cost: co })
       });
+      await refreshPortfolio();
       addToast(`${sid} 已加入投組`, 'low');
       setNewRows((prev) => new Set(prev).add(sid));
       setTimeout(() => setNewRows((prev) => { const n = new Set(prev); n.delete(sid); return n; }), 500);
@@ -156,7 +168,17 @@ export default function Portfolio() {
     setAdding(false);
   };
 
-  const removeLot = async (stockId: string) => {
+  const removeLotById = async (id: string) => {
+    try {
+      await fetch(`${API}/api/v1/lots/${id}`, { method: 'DELETE' });
+      await refreshPortfolio();
+      addToast('逐筆已刪除', 'low');
+    } catch {
+      addToast('刪除失敗', 'medium');
+    }
+  };
+
+  const removeStock = async (stockId: string) => {
     try {
         await fetch(`${API}/api/v1/portfolio/${stockId}`, { method: 'DELETE' });
         await refreshPortfolio();
@@ -175,9 +197,17 @@ export default function Portfolio() {
   const totalCost = holdingsWithPrice.reduce((s, h) => s + h.avgCost * h.totalShares, 0);
   const totalPnl = totalValue - totalCost;
 
+  const groups = lots.reduce<Record<string, AggregatedHolding>>((acc, l) => {
+    if (!acc[l.stock_id]) acc[l.stock_id] = { stock_id: l.stock_id, lots: [], totalShares: 0, avgCost: 0, current_price: null, name: '', pl_pct_thod: null, pl_thod: null, alert_enabled: true };
+    acc[l.stock_id].lots.push(l);
+    acc[l.stock_id].totalShares += l.shares;
+    return acc;
+  }, {});
+
   const toggleExpand = (sid: string) => setExpanded(expanded === sid ? null : sid);
 
   const getBreachStatus = (h: AggregatedHolding, pnl: number, pnlPct: number): { breached: boolean; type: 'pl' | 'pct' | null; value: number | null } => {
+    if (h.alert_enabled === false) return { breached: false, type: null, value: null };
     const plT = h.pl_thod ?? globalThresholds.pl_threshold;
     const pctT = h.pl_pct_thod ?? globalThresholds.pl_percent_threshold;
     if (plT != null && Math.abs(pnl) >= plT) return { breached: true, type: 'pl', value: plT };
@@ -186,25 +216,46 @@ export default function Portfolio() {
   };
 
   const openConfig = (sid: string) => {
+      const h = holdings.find(x => x.stock_id === sid);
       setConfiguringStock(sid);
-      setTempConfig(alertConfigs[sid] || { alert_enabled: true });
+      setTempConfig({
+        pl_thod: h?.pl_thod ?? undefined,
+        pl_pct_thod: h?.pl_pct_thod ?? undefined,
+        alert_enabled: h?.alert_enabled ?? true,
+      });
   }
 
-  const saveConfig = () => {
+  const saveConfig = async () => {
     if (configuringStock && tempConfig) {
         setAlertConfigs(prev => ({ ...prev, [configuringStock]: tempConfig }));
+        try {
+            await fetch(`${API}/api/v1/portfolio/${configuringStock}/thresholds`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pl_thod: tempConfig.pl_thod, pl_pct_thod: tempConfig.pl_pct_thod, alert_enabled: tempConfig.alert_enabled }),
+            });
+            await refreshPortfolio();
+        } catch {}
         addToast('設定已儲存', 'low');
         setConfiguringStock(null);
     }
   };
 
-  const clearConfig = () => {
+  const clearConfig = async () => {
     if (configuringStock) {
         setAlertConfigs(prev => {
             const next = { ...prev };
             delete next[configuringStock];
             return next;
         });
+        try {
+            await fetch(`${API}/api/v1/portfolio/${configuringStock}/thresholds`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pl_thod: null, pl_pct_thod: null, alert_enabled: true }),
+            });
+            await refreshPortfolio();
+        } catch {}
         setConfiguringStock(null);
         addToast('設定已清除', 'low');
     }
@@ -275,17 +326,19 @@ export default function Portfolio() {
                       {formatNumber(pnl, { type: 'money' })}
                     </td>
                     <td data-type="number" className={pnl >= 0 ? styles.bullText : styles.bearText}>
-                      {pnl >= 0 ? '+' : ''}{formatNumber(pnlPct, { type: 'percent' })}
+                      {formatNumber(pnlPct, { type: 'percent' })}
                     </td>
                     <td data-type="number" className={breach.breached ? styles.alertBreached : ''}>
                       <button className={styles.alertBtn} onClick={() => openConfig(h.stock_id)}>
-                        {h.pl_thod ?? globalThresholds.pl_threshold ?? '—'}&nbsp;/&nbsp;{h.pl_pct_thod ?? globalThresholds.pl_percent_threshold ?? '—'}%
+                        {h.alert_enabled === false
+                          ? '🔴 關'
+                          : `${formatNumber(h.pl_thod ?? globalThresholds.pl_threshold, { type: 'money' })} / ${h.pl_pct_thod ?? globalThresholds.pl_percent_threshold ?? '—'}%`}
                       </button>
                     </td>
                     <td data-type="number">{formatNumber(weight, { type: 'percent' })}</td>
                     <td>
                       <button className={styles.expandBtn} onClick={(e) => { e.stopPropagation(); toggleExpand(h.stock_id); }}>{isOpen ? '▲' : '▼'}</button>
-                      <button className={styles.delBtn} onClick={(e) => { e.stopPropagation(); removeLot(h.stock_id); }}>✕</button>
+                      <button className={styles.delBtn} onClick={(e) => { e.stopPropagation(); removeStock(h.stock_id); }}>✕</button>
                     </td>
                   </tr>
                 );
@@ -294,7 +347,44 @@ export default function Portfolio() {
           </tbody>
         </table>
       </div>
-      
+
+      {/* Expanded detail: per-lot breakdown */}
+      {expanded && groups[expanded] && (
+        <div className={styles.expandedSection}>
+          <h3 className={styles.expandedTitle}>{expanded} {prices[expanded]?.name ?? ''} 逐筆明細</h3>
+          <table className={styles.detailTable}>
+            <thead>
+              <tr><th data-type="number">日期</th><th data-type="number">股數</th><th data-type="number">成本</th><th data-type="number">現價</th><th data-type="number">損益</th><th data-type="number">損益%</th><th></th></tr>
+            </thead>
+            <tbody>
+              {groups[expanded].lots.map((l: Lot) => {
+                const cur = prices[expanded]?.close ?? null;
+                const lp = (cur ?? l.cost) * l.shares;
+                const lc = l.cost * l.shares;
+                const lpnl = lp - lc;
+                const lpnlPct = (cur ?? l.cost) / l.cost - 1;
+                return (
+                  <tr key={l.id} className={styles.detailRow}>
+                    <td data-type="number">{l.date}</td>
+                    <td data-type="number">{formatNumber(l.shares, { type: 'volume' }).replace('萬張', '')}</td>
+                    <td data-type="number">{formatNumber(l.cost, { type: 'price' })}</td>
+                    <td data-type="number">{formatNumber(cur, { type: 'price' })}</td>
+                    <td data-type="number" className={lpnl >= 0 ? styles.bullText : styles.bearText}>
+                      <span className={styles.pnlIcon}>{trendIcon(lpnl) || '—'}</span>
+                      {formatNumber(lpnl, { type: 'money' })}
+                    </td>
+                    <td data-type="number" className={lpnl >= 0 ? styles.bullText : styles.bearText}>
+                      {formatNumber(lpnlPct, { type: 'percent' })}
+                    </td>
+                    <td><button className={styles.delBtn} onClick={() => removeLotById(l.id)}>✕</button></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {configuringStock && tempConfig && (
         <div className={styles.configPanel}>
             <div className={styles.configHeader}>
@@ -316,11 +406,56 @@ export default function Portfolio() {
                     onChange={(e) => setTempConfig(prev => prev ? {...prev, pl_pct_thod: Number(e.target.value)} : null)}
                 />
               </div>
+              <div className={styles.configField}>
+                <label className={styles.configLabel}>啟用監控</label>
+                <div className={styles.configToggleRow}>
+                  <label className={styles.configToggleLabel}>
+                    <input type="checkbox"
+                      checked={tempConfig.alert_enabled}
+                      onChange={(e) => setTempConfig(prev => prev ? {...prev, alert_enabled: e.target.checked} : null)}
+                    />
+                    {tempConfig.alert_enabled ? '已啟用' : '已停用'}
+                  </label>
+                </div>
+              </div>
               <div className={styles.configActions}>
                   <button className={styles.configSaveBtn} onClick={saveConfig}>儲存設定</button>
                   <button className={styles.configClearBtn} onClick={clearConfig}>清除設定</button>
               </div>
             </div>
+        </div>
+      )}
+
+      <button className={styles.alertLogToggle} onClick={() => setShowAlertLog(s => !s)}>
+        {showAlertLog ? '▲' : '▼'} 通知記錄 ({alertLog.length})
+      </button>
+      {showAlertLog && (
+        <div className={styles.alertLogPanel}>
+          {alertLog.length === 0 ? (
+            <p className={styles.alertLogEmpty}>尚無通知記錄</p>
+          ) : (
+            <table className={styles.alertLogTable}>
+              <thead>
+                <tr><th>時間</th><th>股號</th><th>損益</th><th>損益%</th><th>門檻</th><th>狀態</th></tr>
+              </thead>
+              <tbody>
+                {alertLog.map((l: any) => (
+                  <tr key={l.log_id}>
+                    <td data-type="number">{l.triggered_at?.slice(0, 16) ?? '—'}</td>
+                    <td>{l.stock_id}</td>
+                    <td data-type="number" className={l.pnl >= 0 ? styles.bullText : styles.bearText}>
+                      {l.pnl != null ? formatNumber(l.pnl, { type: 'money' }) : '—'}
+                    </td>
+                    <td data-type="number" className={l.pnl_pct >= 0 ? styles.bullText : styles.bearText}>
+                      {l.pnl_pct != null ? formatNumber(l.pnl_pct, { type: 'percent' }) : '—'}
+                    </td>
+                    <td data-type="number">{l.threshold_type === 'percent' ? `${l.threshold_value}%` : formatNumber(l.threshold_value, { type: 'money' })}</td>
+                    <td>{l.sent ? '✅ 已發送' : l.reason === 'disabled' ? '🔴 停用' : l.reason === 'cooldown' ? '⏳ 冷卻' : '❌ 失敗'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       )}
     </div>

@@ -151,7 +151,7 @@ class AlertManager:
 
         threshold_display = f"{threshold_value:.2f}%" if threshold_type == "percent" else f"{threshold_value:,.2f} 元"
         direction = "上漲" if pnl >= 0 else "下跌"
-        subject = f"[tw-quant-selector] 個股損益告警 — {stock_name} ({stock_id})"
+        subject = f"[tw-quant-selector] 個股損益監控 — {stock_name} ({stock_id})"
         message = (
             f"股票：{stock_name} ({stock_id})\n"
             f"損益：{'+' if pnl >= 0 else ''}{pnl:,.2f} 元（{pnl_pct:+.2f}%）\n"

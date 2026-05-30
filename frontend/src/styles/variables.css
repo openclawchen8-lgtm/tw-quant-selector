@@ -282,10 +282,10 @@
      These will be removed in a future major version.     */
 
 :root {
-  --color-bull:      var(--color-positive);
-  --color-bull-dim:  var(--color-positive-dim);
-  --color-bull-text: var(--color-positive-text);
-  --color-bear:      var(--color-negative);
-  --color-bear-dim:  var(--color-negative-dim);
-  --color-bear-text: var(--color-negative-text);
+  --color-bull:      var(--color-negative);
+  --color-bull-dim:  var(--color-negative-dim);
+  --color-bull-text: var(--color-negative-text);
+  --color-bear:      var(--color-positive);
+  --color-bear-dim:  var(--color-positive-dim);
+  --color-bear-text: var(--color-positive-text);
 }

@@ -75,6 +75,12 @@ def check_live_alerts():
     
     for h in holdings:
         sid = h["stock_id"]
+        
+        # Skip holdings with alert disabled
+        if h.get("alert_enabled") is False:
+            print(f"  ⏭ {sid}: alerts disabled, skip")
+            continue
+            
         if sid not in live_prices:
             print(f"  ⚠️ No live price for {sid}")
             continue
@@ -108,7 +114,7 @@ def check_live_alerts():
                 "shares": shares,
                 "threshold_value": pct_threshold if abs(pnl_pct) >= pct_threshold else amt_threshold,
                 "threshold_type": "percent" if abs(pnl_pct) >= pct_threshold else "amount",
-                "alert_enabled": True
+                "alert_enabled": h.get("alert_enabled", True)
             })
 
     # Save results back to monitor file

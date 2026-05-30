@@ -52,11 +52,12 @@ def compute_composite_scores(
     stock_scores, stock_individual = _combine(db, stock_ids, as_of_date, weights, strategy_params)
     etf_scores, etf_individual = _combine(db, etf_ids, as_of_date, weights, strategy_params)
 
-    individual_scores = {}
-    for sid in stock_individual:
-        individual_scores[sid] = stock_individual[sid]
+    individual_scores = dict(stock_individual)
     for sid in etf_individual:
-        individual_scores[sid] = etf_individual[sid]
+        if sid in individual_scores:
+            individual_scores[sid].update(etf_individual[sid])
+        else:
+            individual_scores[sid] = dict(etf_individual[sid])
 
     stock_ranked = _rank_and_select(stock_scores, top_n_stocks)
     etf_ranked = _rank_and_select(etf_scores, top_n_etfs)

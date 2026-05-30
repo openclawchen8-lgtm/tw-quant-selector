@@ -1,8 +1,11 @@
 from datetime import date, datetime, timezone
 from typing import Any, Optional
+import asyncio
 import csv
 import io
+import json
 import os
+import time
 import uuid
 from pathlib import Path
 from fastapi import FastAPI, Query, HTTPException, Response
@@ -15,6 +18,7 @@ from tw_quant_selector.data.database import Database
 from tw_quant_selector.strategies.base import get_strategy_schemas, list_strategies
 from tw_quant_selector.strategies.combiner import compute_composite_scores, DEFAULT_WEIGHTS
 from tw_quant_selector.backtest.engine import run_backtest
+from tw_quant_selector.api.event_bus import EventBus
 
 app = FastAPI(title="tw-quant-selector", version="1.0.0")
 app.add_middleware(
@@ -25,6 +29,7 @@ app.add_middleware(
 )
 db = Database(read_only=True)
 db.init_db()
+event_bus = EventBus()
 
 
 def api_response(data: Any, meta: dict[str, Any] | None = None, error: dict[str, Any] | None = None) -> dict:
@@ -113,22 +118,133 @@ SENSITIVE_KEYS = ["TELEGRAM_BOT_TOKEN", "SMTP_PASSWORD"]
 
 @app.post("/api/v1/portfolio")
 def add_portfolio_lot(lot: dict):
-    # Simplified insertion, assuming stock exists
     db.execute("""
         INSERT INTO portfolio (stock_id, avg_cost, shares, is_etf)
         VALUES (?, ?, ?, ?)
     """, [lot["stock_id"], lot["cost"], lot["shares"], lot.get("is_etf", False)])
+    event_bus.broadcast("portfolio_update")
+    return api_response({"status": "success"})
+
+@app.patch("/api/v1/portfolio/{stock_id}/thresholds")
+def update_portfolio_thresholds(stock_id: str, body: dict):
+    pl_thod = body.get("pl_thod")
+    pl_pct_thod = body.get("pl_pct_thod")
+    alert_enabled = body.get("alert_enabled")
+    db.execute(
+        """UPDATE portfolio SET pl_thod = ?, pl_pct_thod = ?, alert_enabled = ?
+           WHERE stock_id = ?""",
+        [pl_thod, pl_pct_thod, alert_enabled if alert_enabled is not None else True, stock_id],
+    )
+    event_bus.broadcast("portfolio_update")
     return api_response({"status": "success"})
 
 @app.delete("/api/v1/portfolio/{stock_id}")
 def delete_portfolio_stock(stock_id: str):
     db.execute("DELETE FROM portfolio WHERE stock_id = ?", [stock_id])
+    event_bus.broadcast("portfolio_update")
     return api_response({"status": "success"})
+
+@app.get("/api/v1/lots")
+def get_lots():
+    rows = db.execute("SELECT id, stock_id, date, shares, cost FROM lots ORDER BY date").fetchall()
+    return api_response([{"id": r[0], "stock_id": r[1], "date": str(r[2]), "shares": int(r[3]), "cost": float(r[4])} for r in rows])
+
+@app.post("/api/v1/lots")
+def add_lot(body: dict):
+    lid = body.get("id") or str(uuid.uuid4())
+    db.execute("INSERT INTO lots (id, stock_id, date, shares, cost) VALUES (?, ?, ?, ?, ?)",
+               [lid, body["stock_id"], body["date"], int(body["shares"]), float(body["cost"])])
+    # Upsert portfolio aggregate
+    existing = db.execute("SELECT avg_cost, shares FROM portfolio WHERE stock_id = ?", [body["stock_id"]]).fetchone()
+    if existing:
+        old_shares = int(existing[1])
+        old_cost = float(existing[0])
+        new_shares = int(body["shares"])
+        new_cost = float(body["cost"])
+        total_shares = old_shares + new_shares
+        avg_cost = (old_cost * old_shares + new_cost * new_shares) / total_shares
+        db.execute("UPDATE portfolio SET shares = ?, avg_cost = ? WHERE stock_id = ?",
+                   [total_shares, avg_cost, body["stock_id"]])
+    else:
+        db.execute("INSERT INTO portfolio (stock_id, avg_cost, shares, is_etf) VALUES (?, ?, ?, ?)",
+                   [body["stock_id"], body["cost"], body["shares"], body.get("is_etf", False)])
+    event_bus.broadcast("portfolio_update")
+    return api_response({"status": "success", "id": lid})
+
+@app.delete("/api/v1/lots/{lot_id}")
+def delete_lot(lot_id: str):
+    row = db.execute("SELECT stock_id, shares, cost FROM lots WHERE id = ?", [lot_id]).fetchone()
+    if row:
+        sid = row[0]
+        del_shares = int(row[1])
+        del_cost = float(row[2])
+        db.execute("DELETE FROM lots WHERE id = ?", [lot_id])
+        # Recalculate portfolio from remaining lots
+        remaining = db.execute("SELECT SUM(shares), AVG(cost) FROM lots WHERE stock_id = ?", [sid]).fetchone()
+        if remaining and remaining[0]:
+            db.execute("UPDATE portfolio SET shares = ?, avg_cost = ? WHERE stock_id = ?",
+                       [int(remaining[0]), float(remaining[1]), sid])
+        else:
+            # Revert portfolio: subtract the deleted lot
+            existing = db.execute("SELECT shares, avg_cost FROM portfolio WHERE stock_id = ?", [sid]).fetchone()
+            if existing:
+                old_shares = int(existing[0])
+                old_avg = float(existing[1])
+                new_shares = old_shares - del_shares
+                if new_shares > 0:
+                    new_avg = (old_avg * old_shares - del_cost * del_shares) / new_shares
+                    db.execute("UPDATE portfolio SET shares = ?, avg_cost = ? WHERE stock_id = ?",
+                               [new_shares, new_avg, sid])
+                else:
+                    db.execute("DELETE FROM portfolio WHERE stock_id = ?", [sid])
+        event_bus.broadcast("portfolio_update")
+    return api_response({"status": "success"})
+
+@app.get("/api/v1/portfolio/events")
+async def portfolio_events():
+    q = event_bus.subscribe()
+    try:
+        last_mtime = os.path.getmtime(db.db_path)
+    except OSError:
+        last_mtime = 0.0
+
+    async def event_generator():
+        nonlocal last_mtime
+        try:
+            heartbeat_interval = 30
+            last_heartbeat = time.monotonic()
+            while True:
+                now = time.monotonic()
+                if now - last_heartbeat >= heartbeat_interval:
+                    yield ": heartbeat\n\n"
+                    last_heartbeat = now
+                
+                # Check for external file changes (script imports)
+                try:
+                    current_mtime = os.path.getmtime(db.db_path)
+                    if current_mtime > last_mtime:
+                        last_mtime = current_mtime
+                        yield f"data: {json.dumps({'type': 'portfolio_update'})}\n\n"
+                except OSError:
+                    pass
+
+                try:
+                    payload = q.get_nowait()
+                    yield f"data: {payload}\n\n"
+                except:
+                    await asyncio.sleep(0.5)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            event_bus.unsubscribe(q)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 @app.get("/api/v1/portfolio")
 def get_portfolio():
     rows = db.execute("""
-        SELECT p.stock_id, p.avg_cost, p.shares, p.is_etf, s.market, p.pl_pct_thod, p.pl_thod
+        SELECT p.stock_id, p.avg_cost, p.shares, p.is_etf, s.market,
+               p.pl_pct_thod, p.pl_thod, p.alert_enabled
         FROM portfolio p
         LEFT JOIN stocks s ON p.stock_id = s.stock_id
     """).fetchall()
@@ -139,12 +255,38 @@ def get_portfolio():
             "stock_id": r[0],
             "avgCost": float(r[1]),
             "totalShares": int(r[2]),
+
             "is_etf": bool(r[3]),
             "market": (r[4] or "TSE").upper(),
             "pl_pct_thod": float(r[5]) if r[5] is not None else None,
-            "pl_thod": float(r[6]) if r[6] is not None else None
+            "pl_thod": float(r[6]) if r[6] is not None else None,
+            "alert_enabled": bool(r[7]) if r[7] is not None else True
         })
     return api_response(portfolio)
+
+@app.get("/api/v1/alerts/log")
+def get_alert_log():
+    rows = db.execute("""
+        SELECT log_id, stock_id, triggered_at, pnl, pnl_pct, threshold_type, threshold_value,
+               avg_cost, current_price, shares, sent, reason
+        FROM alert_log
+        ORDER BY triggered_at DESC
+        LIMIT 50
+    """).fetchall()
+    return api_response([{
+        "log_id": r[0],
+        "stock_id": r[1],
+        "triggered_at": str(r[2]) if r[2] else None,
+        "pnl": float(r[3]) if r[3] is not None else None,
+        "pnl_pct": float(r[4]) if r[4] is not None else None,
+        "threshold_type": r[5],
+        "threshold_value": float(r[6]) if r[6] is not None else None,
+        "avg_cost": float(r[7]) if r[7] is not None else None,
+        "current_price": float(r[8]) if r[8] is not None else None,
+        "shares": int(r[9]) if r[9] is not None else None,
+        "sent": bool(r[10]) if r[10] is not None else False,
+        "reason": r[11],
+    } for r in rows])
 
 @app.get("/api/v1/settings/alerts")
 def get_alert_settings():
@@ -315,7 +457,7 @@ def stocks_prices(ids: str = Query(...)):
     ).fetchall()
     result = {}
     for r in rows:
-        result[r[0]] = {"name": r[1], "close": float(r[2]) if r[2] else None, "date": str(r[3]) if r[3] else None}
+        result[r[0]] = {"name": r[1], "close": float(r[2]) if r[2] is not None else None, "date": str(r[3]) if r[3] else None}
     return api_response(result)
 
 
@@ -383,7 +525,7 @@ def stock_factor_history(stock_id: str, limit: int = 52):
         d = str(r[0])
         if d not in pivoted:
             pivoted[d] = {"date": d, "momentum": None, "value": None, "quality": None, "growth": None}
-        pivoted[d][r[1]] = float(r[2]) if r[2] else None
+        pivoted[d][r[1]] = float(r[2]) if r[2] is not None else None
     result = list(pivoted.values())[:limit]
     return api_response(result)
 
@@ -468,7 +610,7 @@ def export_signals_json(
             [sd, strategy, top_n]
         ).fetchall()
         for r in rows:
-            items.append({"stock_id": r[0], "name": r[1] or "", "score": float(r[2]) if r[2] else None, "rank": r[3] or 0})
+            items.append({"stock_id": r[0], "name": r[1] or "", "score": float(r[2]) if r[2] is not None else None, "rank": r[3] or 0})
     return api_response({"signals": items, "date": sd, "strategy": strategy})
 
 
@@ -531,7 +673,8 @@ def signals_query(
     include_etf: bool = Query(False),
 ):
     if date:
-        signal_date = date
+        from datetime import date as date_cls
+        signal_date = date_cls.fromisoformat(date)
     else:
         row = db.execute("SELECT MAX(signal_date) FROM signals WHERE strategy = ?", [strategy]).fetchone()
         if not row or not row[0]:

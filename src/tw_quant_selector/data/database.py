@@ -193,6 +193,19 @@ CREATE TABLE IF NOT EXISTS portfolio (
     is_etf          BOOLEAN DEFAULT FALSE,
     updated_at      TIMESTAMP DEFAULT now()
 );
+
+ALTER TABLE portfolio ADD COLUMN IF NOT EXISTS pl_thod DOUBLE;
+ALTER TABLE portfolio ADD COLUMN IF NOT EXISTS pl_pct_thod DOUBLE;
+ALTER TABLE portfolio ADD COLUMN IF NOT EXISTS alert_enabled BOOLEAN DEFAULT TRUE;
+
+CREATE TABLE IF NOT EXISTS lots (
+    id              VARCHAR PRIMARY KEY,
+    stock_id        VARCHAR NOT NULL,
+    date            DATE NOT NULL,
+    shares          INTEGER NOT NULL,
+    cost            DECIMAL(18,2) NOT NULL,
+    created_at      TIMESTAMP DEFAULT now()
+);
 """
 
 
@@ -206,6 +219,7 @@ class Database:
     _all_ro_conns: set[duckdb.DuckDBPyConnection] = set()
     _ro_lock = threading.Lock()
     _ro_epoch = 0
+    _file_mtime: float = 0.0
 
     def __init__(self, db_path: str | None = None, read_only: bool = False):
         self.db_path = db_path or os.getenv("DUCKDB_PATH", str(Path.cwd() / "data" / "tw_quant.duckdb"))
@@ -244,6 +258,15 @@ class Database:
             # Use thread-local connection for read-only to ensure stability
             cached = getattr(self._local, "conn", None)
             cached_epoch = getattr(self._local, "epoch", -1)
+            
+            # Check if file was modified externally (e.g., by a script)
+            try:
+                current_mtime = os.path.getmtime(self.db_path)
+                if current_mtime > self._file_mtime:
+                    self._file_mtime = current_mtime
+                    self._close_all_ro()
+            except OSError:
+                pass
             
             if cached is None or cached_epoch < self._ro_epoch:
                 Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)

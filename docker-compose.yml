@@ -11,7 +11,9 @@ services:
     volumes:
       - ./data:/data
       - ./output:/output
+      - ./src:/app/src
       - ./scripts:/app/scripts
+      - .:/app
     ports:
       - "8000:8000"
     restart: unless-stopped
@@ -47,4 +49,6 @@ services:
     volumes:
       - ./data:/data
       - ./output:/output
+      - ./src:/app/src
       - ./scripts:/app/scripts
+      - .:/app

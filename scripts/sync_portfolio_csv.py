@@ -17,13 +17,17 @@ def convert_csv_to_json(csv_path: str, json_path: str):
         with open(csv_path, mode='r', encoding='utf-8') as f:
             reader = csv.DictReader(f, skipinitialspace=True)
             for row in reader:
+                pl_pct_raw = row.get("pl_pct_thod", "").strip()
+                pl_raw = row.get("pl_thod", "").strip()
+                alert_raw = row.get("alert_enabled", "").strip()
                 holding = {
                     "stock_id": row["stock_id"].strip(),
                     "avg_cost": float(row["avg_cost"].strip()),
                     "shares": int(row["shares"].strip()),
                     "is_etf": row["is_etf"].strip().upper() == "TRUE",
-                    "pl_pct_thod": float(row["pl_pct_thod"].strip()),
-                    "pl_thod": float(row["pl_thod"].strip()),
+                    "pl_pct_thod": float(pl_pct_raw) if pl_pct_raw else None,
+                    "pl_thod": float(pl_raw) if pl_raw else None,
+                    "alert_enabled": alert_raw.upper() != "FALSE" if alert_raw else True,
                     "market": "TSE" 
                 }
                 holdings.append(holding)
@@ -36,9 +40,18 @@ def convert_csv_to_json(csv_path: str, json_path: str):
         with db.connection() as conn:
             for h in holdings:
                 conn.execute("""
-                    INSERT OR REPLACE INTO portfolio (stock_id, avg_cost, shares, is_etf, pl_pct_thod, pl_thod)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, [h["stock_id"], h["avg_cost"], h["shares"], h["is_etf"], h["pl_pct_thod"], h["pl_thod"]])
+                    INSERT OR REPLACE INTO portfolio (stock_id, avg_cost, shares, is_etf, pl_pct_thod, pl_thod, alert_enabled)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, [h["stock_id"], h["avg_cost"], h["shares"], h["is_etf"], h["pl_pct_thod"], h["pl_thod"], h["alert_enabled"]])
+                # Also create a lot entry so portfolio can be managed via lots
+                lid = f"csv_{h['stock_id']}_{int(Path(csv_path).stat().st_mtime)}"
+                # Remove existing CSV-generated lot for this stock to avoid duplicates
+                conn.execute("DELETE FROM lots WHERE stock_id = ? AND id LIKE 'csv_%'", [h["stock_id"]])
+                if h["shares"] > 0:
+                    conn.execute("""
+                        INSERT INTO lots (id, stock_id, date, shares, cost)
+                        VALUES (?, ?, CURRENT_DATE, ?, ?)
+                    """, [lid, h["stock_id"], h["shares"], h["avg_cost"]])
         
         print(f"✅ Successfully converted {csv_path} to {json_path} and updated DB")
         print(f"   Processed {len(holdings)} holdings.")
