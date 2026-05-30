@@ -65,7 +65,7 @@ export default function Portfolio() {
   const [holdings, setHoldings] = useState<AggregatedHolding[]>([]);
   const [prices, setPrices] = useState<Record<string, { name: string; close: number | null }>>({});
 
-  const refreshPortfolio = useCallback(async () => {
+  const refreshPortfolio = useCallback(async (realtime: boolean = false) => {
     try {
         const [data, lotsData] = await Promise.all([
             apiFetch<AggregatedHolding[]>('/api/v1/portfolio'),
@@ -75,7 +75,10 @@ export default function Portfolio() {
         setLots(lotsData);
         const ids = [...new Set(data.map((h) => h.stock_id))].join(',');
         if (ids) {
-            const p = await apiFetch<Record<string, { name: string; close: number | null }>>(`/api/v1/stocks/prices?ids=${ids}`);
+            const url = realtime 
+                ? `/api/v1/stocks/prices?ids=${ids}&realtime=true`
+                : `/api/v1/stocks/prices?ids=${ids}`;
+            const p = await apiFetch<Record<string, { name: string; close: number | null }>>(url);
             setPrices(p);
         }
     } catch {
@@ -94,6 +97,9 @@ export default function Portfolio() {
         const payload = JSON.parse(event.data);
         if (payload.type === 'portfolio_update') {
           refreshPortfolio();
+        } else if (payload.type === 'realtime_price_update') {
+          // 收到即時價格更新事件，傳入 realtime=true
+          refreshPortfolio(true);
         }
       } catch { /* ignore parse errors */ }
     };

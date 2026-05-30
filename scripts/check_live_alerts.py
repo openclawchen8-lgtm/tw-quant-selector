@@ -17,6 +17,11 @@ from tw_quant_selector.monitoring.alerting import AlertManager, get_alert_config
 
 TWSE_API_URL = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp"
 
+# Realtime price configuration
+REALTIME_PRICE_ENABLED = os.environ.get("REALTIME_PRICE_ENABLED", "true").lower() == "true"
+REALTIME_DB_PATH = str(root / "data" / "realtime.duckdb")
+FASTAPI_NOTIFY_URL = "http://localhost:8000/api/v1/notify-realtime-update"
+
 def fetch_live_prices(stocks: list[dict]) -> dict[str, float]:
     """Fetch live prices from TWSE MIS API."""
     if not stocks:
@@ -49,6 +54,60 @@ def fetch_live_prices(stocks: list[dict]) -> dict[str, float]:
         print(f"❌ Error fetching TWSE prices: {e}")
         return {}
 
+def write_realtime_prices_to_db(prices: dict[str, float]):
+    """Write realtime prices to separate DuckDB file to avoid DB lock."""
+    if not REALTIME_PRICE_ENABLED:
+        return
+    
+    try:
+        import duckdb
+        
+        # Connect to main DB and attach realtime DB
+        main_db_path = str(root / "data" / "tw_quant.duckdb")
+        conn = duckdb.connect(main_db_path)
+        conn.execute(f"ATTACH '{REALTIME_DB_PATH}' AS rt")
+        
+        # Create table if not exists
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS rt.realtime_prices (
+                stock_id TEXT PRIMARY KEY,
+                close REAL,
+                trade_date DATE,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Upsert prices
+        for stock_id, price in prices.items():
+            conn.execute("""
+                INSERT INTO rt.realtime_prices (stock_id, close, trade_date)
+                VALUES (?, ?, CURRENT_DATE)
+                ON CONFLICT(stock_id) DO UPDATE SET
+                    close = excluded.close,
+                    trade_date = excluded.trade_date,
+                    updated_at = CURRENT_TIMESTAMP
+            """, [stock_id, price])
+        
+        conn.close()
+        print(f"  ✅ Wrote {len(prices)} realtime prices to DB")
+        
+        # Notify FastAPI to trigger SSE event
+        notify_realtime_update()
+        
+    except Exception as e:
+        print(f"  ❌ Error writing realtime prices to DB: {e}")
+
+def notify_realtime_update():
+    """Notify FastAPI endpoint to trigger SSE event."""
+    try:
+        resp = httpx.post(FASTAPI_NOTIFY_URL, timeout=5.0)
+        if resp.status_code == 200:
+            print(f"  ✅ Notified FastAPI for SSE event")
+        else:
+            print(f"  ⚠️ FastAPI notify failed: {resp.status_code}")
+    except Exception as e:
+        print(f"  ⚠️ Cannot notify FastAPI: {e}")
+
 def check_live_alerts():
     monitor_path = ".stock_monitor.json"
     if not Path(monitor_path).exists():
@@ -67,18 +126,25 @@ def check_live_alerts():
     manager = AlertManager(db)
     config = get_alert_config(db)
     
-    # Thresholds
-    # Try getting from holding data, fallback to config
+    # Check if realtime price writing is enabled
+    if REALTIME_PRICE_ENABLED:
+        print("  ℹ️ Realtime price writing is ENABLED")
+    else:
+        print("  ℹ️ Realtime price writing is DISABLED")
     
     print(f"🔍 Monitoring {len(holdings)} holdings...")
     live_prices = fetch_live_prices(holdings)
+    
+    # Write realtime prices to DB (if enabled)
+    if REALTIME_PRICE_ENABLED and live_prices:
+        write_realtime_prices_to_db(live_prices)
     
     for h in holdings:
         sid = h["stock_id"]
         
         # Skip holdings with alert disabled
         if h.get("alert_enabled") is False:
-            print(f"  ⏭ {sid}: alerts disabled, skip")
+            print(f"  ⏭️ {sid}: alerts disabled, skip")
             continue
             
         if sid not in live_prices:

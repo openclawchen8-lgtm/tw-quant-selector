@@ -379,6 +379,16 @@ def portfolio_alert(req: PortfolioAlertRequest):
     return api_response(result)
 
 
+@app.post("/api/v1/notify-realtime-update")
+def notify_realtime_update():
+    """Trigger SSE event for realtime price update."""
+    try:
+        event_bus.broadcast("realtime_price_update")
+        return api_response({"status": "ok", "message": "Realtime price update event sent"})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/v1/settings/db-path")
 def get_db_path():
     return api_response({
@@ -472,10 +482,50 @@ def search_stocks(q: str = Query("", min_length=1)):
 
 
 @app.get("/api/v1/stocks/prices")
-def stocks_prices(ids: str = Query(...)):
+def stocks_prices(
+    ids: str = Query(...),
+    realtime: bool = Query(False)
+):
     stock_ids = [s.strip() for s in ids.split(",") if s.strip()]
     if not stock_ids:
         raise HTTPException(400, "No stock IDs provided")
+    
+    if realtime:
+        # 從 realtime_prices 表讀取即時價格 (使用 ATTACH)
+        try:
+            import duckdb
+            main_db_path = str(Path(__file__).parent.parent.parent / "data" / "tw_quant.duckdb")
+            rt_db_path = str(Path(__file__).parent.parent.parent / "data" / "realtime.duckdb")
+            
+            conn = duckdb.connect(main_db_path)
+            conn.execute(f"ATTACH '{rt_db_path}' AS rt")
+            
+            placeholders = ",".join(["?"] * len(stock_ids))
+            rows = conn.execute(f"""
+                SELECT 
+                    COALESCE(rt.realtime_prices.stock_id, dp.stock_id) as stock_id,
+                    s.stock_name,
+                    COALESCE(rt.realtime_prices.close, dp.close) as close,
+                    COALESCE(rt.realtime_prices.trade_date, dp.trade_date) as trade_date
+                FROM daily_prices dp
+                JOIN stocks s ON s.stock_id = dp.stock_id
+                LEFT JOIN rt.realtime_prices ON rt.realtime_prices.stock_id = dp.stock_id
+                WHERE dp.stock_id IN ({placeholders})
+                AND dp.trade_date = (SELECT MAX(trade_date) FROM daily_prices WHERE stock_id = dp.stock_id)
+            """, stock_ids).fetchall()
+            
+            conn.close()
+            
+            result = {}
+            for r in rows:
+                result[r[0]] = {"name": r[1], "close": float(r[2]) if r[2] is not None else None, "date": str(r[3]) if r[3] else None}
+            return api_response(result)
+            
+        except Exception as e:
+            print(f"⚠️ Error reading realtime prices: {e}, fallback to daily prices")
+            # fallback to daily prices
+    
+    # 原始邏輯：從 daily_prices 讀取
     placeholders = ",".join(["?"] * len(stock_ids))
     rows = db.execute(
         f"SELECT dp.stock_id, s.stock_name, dp.close, dp.trade_date FROM daily_prices dp JOIN stocks s ON s.stock_id = dp.stock_id WHERE dp.stock_id IN ({placeholders}) AND dp.trade_date = (SELECT MAX(trade_date) FROM daily_prices WHERE stock_id = dp.stock_id)",
