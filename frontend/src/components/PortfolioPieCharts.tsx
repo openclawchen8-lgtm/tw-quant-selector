@@ -140,9 +140,9 @@ const PortfolioPieCharts: React.FC<PortfolioPieChartsProps> = ({
               ))}
             </Pie>
             <Tooltip 
-              formatter={(value: any) => [
+              formatter={(value: any, name: string) => [
                 `${Number(value).toFixed(2)}%`, 
-                ''
+                name  // 顯示股票名稱
               ]}
             />
             <Legend 
@@ -177,9 +177,9 @@ const PortfolioPieCharts: React.FC<PortfolioPieChartsProps> = ({
               ))}
             </Pie>
             <Tooltip 
-              formatter={(value: any) => [
+              formatter={(value: any, name: string) => [
                 `NT$ ${Number(value).toLocaleString()}`, 
-                ''
+                name  // 顯示股票名稱
               ]}
             />
             <Legend 
