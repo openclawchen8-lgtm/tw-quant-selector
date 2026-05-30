@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import SkeletonLoader from '../components/SkeletonLoader';
+import Dropdown from '../components/Dropdown';
 import { DesktopOnly, MobileMessage } from '../utils/responsive';
 import { formatNumber } from '../utils/format';
 import styles from './Strategy.module.css';
@@ -629,16 +630,21 @@ export default function Strategy() {
                   {schema?.fields.map((f) => {
                    const val = params[name]?.[f.key] ?? config?.strategies[name]?.params?.[f.key];
                    if (f.key === 'selected_guru') {
+                     // 建立大師選項清單
+                     const guruOptions = GURU_LIST.map(g => ({
+                       value: g.id,
+                       label: `${g.nameCN} (${g.nameEN})`
+                     }));
+                     
                      return (
                        <div key={f.key} className={styles.paramRow}>
                          <label>{f.label}</label>
-                         <select value={String(val || 'buffett')}
-                           onChange={(e) => updateParam(name, f.key, e.target.value)}
-                           className={styles.select}>
-                           {GURU_LIST.map(g => (
-                             <option key={g.id} value={g.id}>{g.nameCN} ({g.nameEN})</option>
-                           ))}
-                         </select>
+                         <Dropdown
+                           options={guruOptions}
+                           value={String(val || 'buffett')}
+                           onChange={(value) => updateParam(name, f.key, value)}
+                           className={styles.select}
+                         />
                        </div>
                      );
                    }

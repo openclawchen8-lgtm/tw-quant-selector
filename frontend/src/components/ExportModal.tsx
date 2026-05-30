@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import Dropdown from './Dropdown';
 import styles from './ExportModal.module.css';
 
 interface ColumnOption {
@@ -38,10 +39,14 @@ export default function ExportModal({ defaultColumns, onExport, onClose }: Props
 
         <div className={styles.field}>
           <label>格式</label>
-          <select value={format} onChange={(e) => setFormat(e.target.value as any)}>
-            <option value="csv">CSV</option>
-            <option value="json">JSON</option>
-          </select>
+          <Dropdown
+            options={[
+              { value: 'csv', label: 'CSV' },
+              { value: 'json', label: 'JSON' },
+            ]}
+            value={format}
+            onChange={(value) => setFormat(value as 'csv' | 'json')}
+          />
         </div>
 
         <div className={styles.field}>

@@ -4,6 +4,7 @@ import { fetchSignalCalendar, fetchSignalsByDate } from '../api/client';
 import BaseTable from '../components/BaseTable';
 import FactorMiniBar from '../components/FactorMiniBar';
 import Tooltip from '../components/Tooltip';
+import Dropdown from '../components/Dropdown';
 import ExportModal from '../components/ExportModal';
 import EmptyState from '../components/EmptyState';
 import MissingDataSummary from '../components/MissingDataSummary';
@@ -253,10 +254,18 @@ export default function Signals() {
             </datalist>
             <button className={styles.navBtn} onClick={goNextDay} disabled={!hasNext || calLoading} title="下一天">▶</button>
           </div>
-          <select className={styles.select} value={strategy} onChange={(e) => setStrategy(e.target.value)}>
-            <option value="composite">全部策略</option>
-            <option value="momentum">動能</option><option value="value">價值</option><option value="quality">品質</option><option value="growth">成長</option>
-          </select>
+          <Dropdown
+            options={[
+              { value: 'composite', label: '全部策略' },
+              { value: 'momentum', label: '動能' },
+              { value: 'value', label: '價值' },
+              { value: 'quality', label: '品質' },
+              { value: 'growth', label: '成長' },
+            ]}
+            value={strategy}
+            onChange={setStrategy}
+            className={styles.select}
+          />
           <label className={styles.toggle}>
             <input type="checkbox" checked={showEtf} onChange={() => setShowEtf((x) => !x)} />
             ETF
