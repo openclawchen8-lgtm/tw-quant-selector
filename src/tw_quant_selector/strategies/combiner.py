@@ -121,14 +121,28 @@ def _save_signals(db, as_of_date, stock_scores, etf_scores, stock_ranked, etf_ra
     ranked_ids = {r["stock_id"] for r in stock_ranked} | {r["stock_id"] for r in etf_ranked}
     all_scores = {**stock_scores, **etf_scores}
     strategies = ["composite"] + list_strategies()
+    
+    # 为每个策略独立计算排名
+    strategy_rankings = {}
+    for strategy in strategies:
+        if strategy == "composite":
+            # composite 使用传入的排名
+            strategy_rankings[strategy] = {r["stock_id"]: r["rank"] for r in stock_ranked + etf_ranked}
+        else:
+            #  Individual strategies: 根据各自的分数重新排名
+            scores = (individual_scores or {}).get(strategy, {})
+            if not scores:
+                strategy_rankings[strategy] = {}
+                continue
+            # 按分数从高到低排序
+            sorted_stocks = sorted(scores.items(), key=lambda x: -x[1] if x[1] is not None and not np.isnan(x[1]) else 0)
+            strategy_rankings[strategy] = {sid: i + 1 for i, (sid, _) in enumerate(sorted_stocks)}
+    
     with db.connection(read_only=False) as conn:
         for strategy in strategies:
             for sid, score in all_scores.items():
-                rank = None
-                for i, r in enumerate(stock_ranked + etf_ranked):
-                    if r["stock_id"] == sid:
-                        rank = i + 1
-                        break
+                # 使用对应策略的排名
+                rank = strategy_rankings.get(strategy, {}).get(sid)
 
                 if strategy != "composite":
                     raw = (individual_scores or {}).get(strategy, {}).get(sid)
