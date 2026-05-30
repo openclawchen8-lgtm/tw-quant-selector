@@ -74,8 +74,8 @@ const PortfolioPieCharts: React.FC<PortfolioPieChartsProps> = ({
     );
   }
 
-  // 自定義標籤渲染
-  const renderCustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
+  // 自定義標籤渲染 - 權重分佈（顯示百分比）
+  const renderWeightLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
     const RADIAN = Math.PI / 180;
     const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
     const x = cx + radius * Math.cos(-midAngle * RADIAN);
@@ -86,6 +86,26 @@ const PortfolioPieCharts: React.FC<PortfolioPieChartsProps> = ({
     return (
       <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={12}>
         {`${(percent * 100).toFixed(1)}%`}
+      </text>
+    );
+  };
+
+  // 自定義標籤渲染 - 總金額分佈（顯示 NT$ 金額）
+  const renderValueLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, value }: any) => {
+    const RADIAN = Math.PI / 180;
+    const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+    const x = cx + radius * Math.cos(-midAngle * RADIAN);
+    const y = cy + radius * Math.sin(-midAngle * RADIAN);
+    
+    // 金額小於 10000 不顯示標籤（避免擁擠）
+    if (value < 10000) return null;
+    
+    // 格式化金額：NT$ 100,000
+    const formattedValue = `NT$ ${Number(value).toLocaleString('zh-TW', { maximumFractionDigits: 0 })}`;
+    
+    return (
+      <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={11}>
+        {formattedValue}
       </text>
     );
   };
@@ -109,7 +129,7 @@ const PortfolioPieCharts: React.FC<PortfolioPieChartsProps> = ({
               cx="50%"
               cy="50%"
               labelLine={false}
-              label={renderCustomLabel}
+              label={renderWeightLabel}
               outerRadius={120}
               fill="#8884d8"
               dataKey="value"
@@ -146,7 +166,7 @@ const PortfolioPieCharts: React.FC<PortfolioPieChartsProps> = ({
               cx="50%"
               cy="50%"
               labelLine={false}
-              label={renderCustomLabel}
+              label={renderValueLabel}
               outerRadius={120}
               fill="#8884d8"
               dataKey="value"
