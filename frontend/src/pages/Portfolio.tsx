@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import EmptyState from '../components/EmptyState';
+import PortfolioPieCharts from '../components/PortfolioPieCharts';  // 新增圓餅圖組件
 import { useToast } from '../components/Toast';
 import { formatNumber } from '../utils/format';
 import { trendIcon } from '../utils/color';
@@ -316,6 +317,15 @@ export default function Portfolio() {
           <input className={styles.cashInput} type="number" value={cashBalance} onChange={(e) => setCashBalance(Number(e.target.value))} />
         </div>
       </div>
+
+      {/* 新增圓餅圖 */}
+      <PortfolioPieCharts 
+        holdings={holdings}
+        prices={prices}
+        onSliceClick={(stockId) => {
+          navigate(`/signals/${stockId}`);
+        }}
+      />
 
       <h2 className={styles.sectionTitle}>持倉 Holdings</h2>
       <div className={styles.tableWrapper}>
