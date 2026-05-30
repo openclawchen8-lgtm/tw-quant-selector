@@ -923,13 +923,17 @@ def get_backtest(run_id: str):
     ).fetchone()
     if not row:
         raise HTTPException(404, "Backtest run not found")
-    return api_response({"status": "completed", "run_id": run_id, "metrics": {
-        "total_return": float(row[6]) if row[6] else None,
-        "cagr": float(row[7]) if row[7] else None,
-        "sharpe": float(row[8]) if row[8] else None,
-        "max_drawdown": float(row[9]) if row[9] else None,
-        "calmar": float(row[10]) if row[10] else None,
-    }})
+    return api_response({
+        "status": "completed", 
+        "run_id": run_id, 
+        "metrics": {
+            "total_return": float(row[6]) if row[6] else None,
+            "cagr": float(row[7]) if row[7] else None,
+            "sharpe": float(row[8]) if row[8] else None,
+            "max_drawdown": float(row[9]) if row[9] else None,
+            "calmar": float(row[10]) if row[10] else None,
+        }
+    })
 
 
 @app.get("/api/v1/data/status")
