@@ -52,6 +52,10 @@ export default function Backtest() {
   
   const isCompareMode = compareIds.length === 2;
 
+  // TBD: 刪除模式狀態
+  const [deleteMode, setDeleteMode] = useState(false);
+  const [selectedDeleteIds, setSelectedDeleteIds] = useState<string[]>([]);
+
   useEffect(() => {
     apiFetch<BacktestRun[]>('/api/v1/backtest/history')
       .then(setHistory)
@@ -118,6 +122,57 @@ export default function Backtest() {
       if (result?.run_id === runId) setResult(null);
     } catch (err: any) {
       alert('刪除失敗：' + err.message);
+    }
+  };
+
+  // TBD: 批量刪除函數
+  const deleteSelectedRuns = async () => {
+    if (selectedDeleteIds.length === 0) return;
+    if (!confirm(`確定刪除所選 ${selectedDeleteIds.length} 筆回測記錄？`)) return;
+    
+    try {
+      const apiResult = await apiFetch<{ deleted: string[]; total_deleted: number }>('/api/v1/backtest/batch', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(selectedDeleteIds),
+      });
+      
+      // 從 history 中移除已刪除的項目
+      setHistory(prev => prev.filter(r => !selectedDeleteIds.includes(r.run_id)));
+      
+      // 如果當前結果在被刪除列表中，清除結果
+      if (result?.run_id && selectedDeleteIds.includes(result.run_id)) {
+        setResult(null);
+      }
+      
+      // 清除選取狀態
+      setSelectedDeleteIds([]);
+      
+      alert(`成功刪除 ${apiResult.total_deleted} 筆記錄`);
+    } catch (err: any) {
+      alert('批量刪除失敗：' + err.message);
+    }
+  };
+
+  // TBD: 切換刪除模式
+  const toggleDeleteMode = () => {
+    setDeleteMode(prev => !prev);
+    setSelectedDeleteIds([]);  // 退出模式時清除選取
+  };
+
+  // TBD: 切換單筆選取
+  const toggleDeleteSelection = (runId: string) => {
+    setSelectedDeleteIds(prev => 
+      prev.includes(runId) ? prev.filter(id => id !== runId) : [...prev, runId]
+    );
+  };
+
+  // TBD: 全選/取消全選
+  const toggleSelectAll = () => {
+    if (selectedDeleteIds.length === history.length) {
+      setSelectedDeleteIds([]);  // 取消全選
+    } else {
+      setSelectedDeleteIds(history.map(r => r.run_id));  // 全選
     }
   };
 
@@ -190,37 +245,85 @@ export default function Backtest() {
           </button>
 
           <div className={styles.section}>
-            <h3>歷史執行記錄</h3>
+            <div className={styles.sectionHeader}>
+              <h3>歷史執行記錄</h3>
+              <button 
+                className={`${styles.modeToggleBtn} ${deleteMode ? styles.active : ''}`}
+                onClick={toggleDeleteMode}
+              >
+                {deleteMode ? '退出刪除模式' : '刪除模式'}
+              </button>
+            </div>
             {history.length === 0 ? (
               <p className={styles.muted}>尚無回測紀錄</p>
             ) : (
               <div className={styles.historyList}>
-                  {history.map((r) => (
-                    <div 
-                      key={r.run_id} 
-                      className={`${styles.historyItem} ${compareIds.includes(r.run_id) ? styles.selected : ''}`}
-                      onClick={() => toggleCompare(r.run_id)}
-                    >
+                {/* 刪除模式：全選 + 批量刪除按鈕 */}
+                {deleteMode && (
+                  <div className={styles.deleteModeHeader}>
+                    <label className={styles.selectAllLabel}>
                       <input
                         type="checkbox"
-                        checked={compareIds.includes(r.run_id)}
-                        onChange={() => {}}
-                        onClick={(e) => e.stopPropagation()}
-                        className={styles.historyCheckbox}
+                        checked={selectedDeleteIds.length === history.length}
+                        onChange={toggleSelectAll}
+                        className={styles.selectAllCheckbox}
                       />
-                      <span className={styles.historyDate}>{r.start_date || ''}</span>
-                      <span className={`font-data ${colorize(r.cagr, 'percent').className}`}>
-                        {formatNumber(r.cagr, { type: 'percent' })}
-                      </span>
-                      <span className="font-data" style={{ color: 'var(--text-muted)' }}>
-                        Sharpe {formatNumber(r.sharpe, { type: 'score' })}
-                      </span>
+                      全選
+                    </label>
+                    <button
+                      className={styles.batchDeleteBtn}
+                      disabled={selectedDeleteIds.length === 0}
+                      onClick={deleteSelectedRuns}
+                    >
+                      刪除所選 ({selectedDeleteIds.length})
+                    </button>
+                  </div>
+                )}
+                
+                {history.map((r) => (
+                  <div 
+                    key={r.run_id} 
+                    className={`${styles.historyItem} ${compareIds.includes(r.run_id) ? styles.selected : ''} ${selectedDeleteIds.includes(r.run_id) ? styles.markedForDelete : ''}`}
+                    onClick={() => !deleteMode && toggleCompare(r.run_id)}
+                  >
+                    {/* 比較模式 checkbox */}
+                    <input
+                      type="checkbox"
+                      checked={compareIds.includes(r.run_id)}
+                      onChange={() => {}}
+                      onClick={(e) => e.stopPropagation()}
+                      className={styles.historyCheckbox}
+                      disabled={deleteMode}  // 刪除模式下禁用比較選取
+                    />
+                    
+                    {/* 刪除模式 checkbox */}
+                    {deleteMode && (
+                      <input
+                        type="checkbox"
+                        checked={selectedDeleteIds.includes(r.run_id)}
+                        onChange={() => toggleDeleteSelection(r.run_id)}
+                        onClick={(e) => e.stopPropagation()}
+                        className={styles.deleteCheckbox}
+                      />
+                    )}
+                    
+                    <span className={styles.historyDate}>{r.start_date || ''}</span>
+                    <span className={`font-data ${colorize(r.cagr, 'percent').className}`}>
+                      {formatNumber(r.cagr, { type: 'percent' })}
+                    </span>
+                    <span className="font-data" style={{ color: 'var(--text-muted)' }}>
+                      Sharpe {formatNumber(r.sharpe, { type: 'score' })}
+                    </span>
+                    
+                    {/* 非刪除模式：顯示單筆刪除按鈕 */}
+                    {!deleteMode && (
                       <button
                         className={styles.deleteBtn}
                         onClick={(e) => deleteRun(r.run_id, e)}
                         title="刪除此記錄"
                       >✕</button>
-                    </div>
+                    )}
+                  </div>
                 ))}
               </div>
             )}

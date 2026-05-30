@@ -19,7 +19,9 @@ class ValueStrategy(BaseStrategy):
         return ["valuations"]
 
     def compute_score(self, universe: list[str], as_of_date: date, db=None) -> dict[str, float]:
-        scores: dict[str, float] = {}
+        raw_scores: dict[str, float] = {}
+        
+        # 第一步：计算所有股票的原始分数（不做 zscore）
         for sid in universe:
             row = db.execute(
                 """SELECT pe_ratio, pb_ratio, dividend_yield
@@ -34,22 +36,25 @@ class ValueStrategy(BaseStrategy):
             pb, pe, div_yield = row
             components = []
 
+            # 价值策略：低 PB/PE 好，高殖利率好
+            # 所以用负号：越低越好 → zscore 越高分
             if pb is not None and 0 < pb <= self.max_pb:
-                components.append(safe_zscore(np.array([-log(float(pb))]))[0])
+                components.append(-log(float(pb)))  # 低 PB → 高分
             if pe is not None and pe > 0 and pe <= self.max_pe:
-                components.append(safe_zscore(np.array([-log(float(pe))]))[0])
+                components.append(-log(float(pe)))  # 低 PE → 高分
             if div_yield is not None and div_yield >= self.min_yield:
-                components.append(safe_zscore(np.array([float(div_yield)]))[0])
+                components.append(float(div_yield))  # 高殖利率 → 高分
 
             if components:
-                scores[sid] = float(np.mean(components))
+                raw_scores[sid] = float(np.mean(components))
 
-        if not scores:
+        if not raw_scores:
             return {}
 
-        vals = np.array(list(scores.values()))
+        # 第二步：统一做 zscore 标准化
+        vals = np.array(list(raw_scores.values()))
         if np.std(vals) == 0:
-            return {k: 0.0 for k in scores}
+            return {k: 0.0 for k in raw_scores}
 
         z = safe_zscore(vals)
-        return {sid: float(z[i]) for i, sid in enumerate(scores)}
+        return {sid: float(z[i]) for i, sid in enumerate(raw_scores)}

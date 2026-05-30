@@ -39,3 +39,17 @@ export const FACTOR_LABELS: Record<string, string> = {
   quality: '品質',
   growth: '成長',
 };
+
+export const DATASET_LABELS: Record<string, string> = {
+  daily_prices: '股價',
+  price: '股價',
+  valuations: '本益比/淨值比',
+  per: '本益比/淨值比',
+  monthly_revenue: '月營收',
+  revenue: '月營收',
+  financials: '財報',
+  signals: '訊號',
+  backtest_runs: '回測',
+  stocks: '股票',
+  ingestion_tracker: '追蹤',
+};

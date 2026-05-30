@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { fetchDashboard, fetchMonitorLogs, fetchMonitorDatasets,
   type DashboardData, type LogEntry, type DatasetInfo } from '../api/client';
+import { DATASET_LABELS } from '../utils/color';
 import SkeletonLoader from '../components/SkeletonLoader';
 import EmptyState from '../components/EmptyState';
 import styles from './Monitor.module.css';
@@ -132,7 +133,7 @@ export default function Monitor() {
               }, {})
             ).map(([name, { count, last_updated, statuses }]) => (
               <tr key={name} className={styles.dataRow}>
-                <td className={styles.datasetName}>{name}</td>
+                <td className={styles.datasetName}>{DATASET_LABELS[name] || name}</td>
                 <td data-type="number">{count}</td>
                 <td className={count === 0 ? styles.stale : ''}>
                   {last_updated ?? '—'}
@@ -193,7 +194,7 @@ export default function Monitor() {
           ) : (
             Object.entries(missing).map(([dataset, items]) => (
               <div key={dataset} className={styles.missingCard}>
-                <h3 className={styles.missingDataset}>{dataset}</h3>
+                <h3 className={styles.missingDataset}>{DATASET_LABELS[dataset] || dataset}</h3>
                 <ul className={styles.missingList}>
                   {items.map((s) => (
                     <li key={s} className={styles.missingItem}>

@@ -1,5 +1,5 @@
 from datetime import date, datetime, timezone
-from typing import Any, Optional
+from typing import Any, List, Optional
 import asyncio
 import csv
 import io
@@ -8,7 +8,7 @@ import os
 import time
 import uuid
 from pathlib import Path
-from fastapi import FastAPI, Query, HTTPException, Response
+from fastapi import FastAPI, Query, HTTPException, Response, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -265,15 +265,31 @@ def get_portfolio():
     return api_response(portfolio)
 
 @app.get("/api/v1/alerts/log")
-def get_alert_log():
+def get_alert_log(
+    page: int = Query(1, ge=1, description="Page number (1-based)"),
+    page_size: int = Query(30, ge=1, le=100, description="Items per page (5/10/20/30/40/50)")
+):
+    # Validate page_size
+    allowed_sizes = [5, 10, 20, 30, 40, 50]
+    if page_size not in allowed_sizes:
+        page_size = 30  # default
+    
+    offset = (page - 1) * page_size
+    
+    # Get total count
+    total = db.execute("SELECT COUNT(*) FROM alert_log").fetchone()[0]
+    total_pages = (total + page_size - 1) // page_size
+    
+    # Get paginated data
     rows = db.execute("""
         SELECT log_id, stock_id, triggered_at, pnl, pnl_pct, threshold_type, threshold_value,
                avg_cost, current_price, shares, sent, reason
         FROM alert_log
         ORDER BY triggered_at DESC
-        LIMIT 50
-    """).fetchall()
-    return api_response([{
+        LIMIT ? OFFSET ?
+    """, [page_size, offset]).fetchall()
+    
+    items = [{
         "log_id": r[0],
         "stock_id": r[1],
         "triggered_at": str(r[2]) if r[2] else None,
@@ -286,7 +302,17 @@ def get_alert_log():
         "shares": int(r[9]) if r[9] is not None else None,
         "sent": bool(r[10]) if r[10] is not None else False,
         "reason": r[11],
-    } for r in rows])
+    } for r in rows]
+    
+    return api_response({
+        "items": items,
+        "pagination": {
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "total_pages": total_pages,
+        }
+    })
 
 @app.get("/api/v1/settings/alerts")
 def get_alert_settings():
@@ -812,6 +838,32 @@ def delete_backtest(run_id: str):
     db.execute("DELETE FROM backtest_runs WHERE run_id = ?", [run_id])
     print(f"Deleted backtest run {run_id}")
     return api_response({"deleted": run_id})
+
+
+@app.delete("/api/v1/backtest/batch")
+def delete_backtest_batch(run_ids: List[str] = Body(..., description="List of run_ids to delete")):
+    """Batch delete multiple backtest runs."""
+    if not run_ids:
+        raise HTTPException(400, "run_ids cannot be empty")
+    
+    deleted = []
+    not_found = []
+    
+    for run_id in run_ids:
+        row = db.execute("SELECT 1 FROM backtest_runs WHERE run_id = ?", [run_id]).fetchone()
+        if not row:
+            not_found.append(run_id)
+            continue
+        db.execute("DELETE FROM backtest_equity WHERE run_id = ?", [run_id])
+        db.execute("DELETE FROM backtest_runs WHERE run_id = ?", [run_id])
+        deleted.append(run_id)
+        print(f"Deleted backtest run {run_id}")
+    
+    return api_response({
+        "deleted": deleted,
+        "not_found": not_found,
+        "total_deleted": len(deleted)
+    })
 
 
 @app.get("/api/v1/backtest/{run_id}")

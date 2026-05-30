@@ -121,7 +121,9 @@ export default function Portfolio() {
   const [configuringStock, setConfiguringStock] = useState<string | null>(null);
   const [tempConfig, setTempConfig] = useState<StockAlertConfig | null>(null);
   const [alertLog, setAlertLog] = useState<any[]>([]);
-  const [showAlertLog, setShowAlertLog] = useState(false);
+  const [alertLogPagination, setAlertLogPagination] = useState({ page: 1, page_size: 30, total: 0, total_pages: 0 });
+  const [alertPageSize, setAlertPageSize] = useState(30);
+  const [showAlertLog, setShowAlertLog] = useState(true);  // ✅ 改 true，默认展开
 
   useEffect(() => {
     apiFetch<{ key: string; value: string | null }[]>('/api/v1/settings/alerts').then(data => {
@@ -137,9 +139,26 @@ export default function Portfolio() {
   useEffect(() => { localStorage.setItem('tw_quant_alert_configs', JSON.stringify(alertConfigs)); }, [alertConfigs]);
   useEffect(() => { localStorage.setItem('tw_quant_cash', String(cashBalance)); }, [cashBalance]);
 
-  useEffect(() => {
-    apiFetch<any[]>('/api/v1/alerts/log').then(setAlertLog).catch(() => {});
+  const fetchAlertLog = useCallback(async (page: number, pageSize: number) => {
+    console.log('[fetchAlertLog] 調用 API: page=', page, 'pageSize=', pageSize);
+    try {
+      const data = await apiFetch<{ items: any[]; pagination: { page: number; page_size: number; total: number; total_pages: number } }>(
+        `/api/v1/alerts/log?page=${page}&page_size=${pageSize}`
+      );
+      console.log('[fetchAlertLog] API 返回:', data);
+      setAlertLog(data.items || []);
+      setAlertLogPagination(data.pagination || { page: 1, page_size: pageSize, total: 0, total_pages: 0 });
+    } catch (e) {
+      console.error('[fetchAlertLog] 失敗:', e);
+    }
   }, []);
+
+  useEffect(() => {
+    console.log('[useEffect] showAlertLog=', showAlertLog, 'alertPageSize=', alertPageSize);
+    if (showAlertLog) {
+      fetchAlertLog(1, alertPageSize);
+    }
+  }, [showAlertLog, alertPageSize, fetchAlertLog]);
 
   const addLot = async () => {
     const sid = stockId.trim();
@@ -427,34 +446,74 @@ export default function Portfolio() {
       )}
 
       <button className={styles.alertLogToggle} onClick={() => setShowAlertLog(s => !s)}>
-        {showAlertLog ? '▲' : '▼'} 通知記錄 ({alertLog.length})
+        {showAlertLog ? '▲' : '▼'} 通知記錄 ({alertLogPagination.total})
       </button>
       {showAlertLog && (
         <div className={styles.alertLogPanel}>
+          <div className={styles.alertLogHeader}>
+            <span>每頁筆數：</span>
+            <select 
+              value={alertPageSize} 
+              onChange={(e) => setAlertPageSize(Number(e.target.value))}
+              className={styles.pageSizeSelect}
+            >
+              <option value={5}>5</option>
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={30}>30</option>
+              <option value={40}>40</option>
+              <option value={50}>50</option>
+            </select>
+            <span style={{ marginLeft: 'auto' }}>
+              第 {alertLogPagination.page} 頁 / 共 {alertLogPagination.total_pages} 頁 ({alertLogPagination.total} 筆)
+            </span>
+          </div>
           {alertLog.length === 0 ? (
             <p className={styles.alertLogEmpty}>尚無通知記錄</p>
           ) : (
-            <table className={styles.alertLogTable}>
-              <thead>
-                <tr><th>時間</th><th>股號</th><th>損益</th><th>損益%</th><th>門檻</th><th>狀態</th></tr>
-              </thead>
-              <tbody>
-                {alertLog.map((l: any) => (
-                  <tr key={l.log_id}>
-                    <td data-type="number">{l.triggered_at?.slice(0, 16) ?? '—'}</td>
-                    <td>{l.stock_id}</td>
-                    <td data-type="number" className={l.pnl >= 0 ? styles.bullText : styles.bearText}>
-                      {l.pnl != null ? formatNumber(l.pnl, { type: 'money' }) : '—'}
-                    </td>
-                    <td data-type="number" className={l.pnl_pct >= 0 ? styles.bullText : styles.bearText}>
-                      {l.pnl_pct != null ? formatNumber(l.pnl_pct, { type: 'percent' }) : '—'}
-                    </td>
-                    <td data-type="number">{l.threshold_type === 'percent' ? `${l.threshold_value}%` : formatNumber(l.threshold_value, { type: 'money' })}</td>
-                    <td>{l.sent ? '✅ 已發送' : l.reason === 'disabled' ? '🔴 停用' : l.reason === 'cooldown' ? '⏳ 冷卻' : '❌ 失敗'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <>
+              <table className={styles.alertLogTable}>
+                <thead>
+                  <tr><th>時間</th><th>股號</th><th>損益</th><th>損益%</th><th>門檻</th><th>狀態</th></tr>
+                </thead>
+                <tbody>
+                  {alertLog.map((l: any) => (
+                    <tr key={l.log_id}>
+                      <td data-type="number">{l.triggered_at?.slice(0, 16) ?? '—'}</td>
+                      <td>{l.stock_id}</td>
+                      <td data-type="number" className={l.pnl >= 0 ? styles.bullText : styles.bearText}>
+                        {l.pnl != null ? formatNumber(l.pnl, { type: 'money' }) : '—'}
+                      </td>
+                      <td data-type="number" className={l.pnl_pct >= 0 ? styles.bullText : styles.bearText}>
+                        {l.pnl_pct != null ? formatNumber(l.pnl_pct, { type: 'percent' }) : '—'}
+                      </td>
+                      <td data-type="number">{l.threshold_type === 'percent' ? `${l.threshold_value}%` : formatNumber(l.threshold_value, { type: 'money' })}</td>
+                      <td>{l.sent ? '✅ 已發送' : l.reason === 'disabled' ? '🔴 停用' : l.reason === 'cooldown' ? '⏳ 冷卻' : '❌ 失敗'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {/* 分頁控件 */}
+              <div className={styles.pagination}>
+                <button 
+                  onClick={() => fetchAlertLog(alertLogPagination.page - 1, alertPageSize)}
+                  disabled={alertLogPagination.page <= 1}
+                  className={styles.pageBtn}
+                >
+                  ← 上一頁
+                </button>
+                <span className={styles.pageInfo}>
+                  {alertLogPagination.page} / {alertLogPagination.total_pages}
+                </span>
+                <button 
+                  onClick={() => fetchAlertLog(alertLogPagination.page + 1, alertPageSize)}
+                  disabled={alertLogPagination.page >= alertLogPagination.total_pages}
+                  className={styles.pageBtn}
+                >
+                  下一頁 →
+                </button>
+              </div>
+            </>
           )}
         </div>
       )}

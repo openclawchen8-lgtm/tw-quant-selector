@@ -8,7 +8,7 @@ import FactorMiniBar from '../components/FactorMiniBar';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { useToast } from '../components/Toast';
 import { formatNumber } from '../utils/format';
-import { colorForChange, trendIcon, FACTOR_LABELS } from '../utils/color';
+import { colorForChange, trendIcon, FACTOR_LABELS, DATASET_LABELS } from '../utils/color';
 import MarketStatus from '../components/MarketStatus';
 import SignalRowDetail from '../components/SignalRowDetail';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -279,7 +279,7 @@ export default function Dashboard() {
               </div>
               {dataStatus.datasets.map((ds) => (
                 <div key={ds.name} className={styles.datasetRow}>
-                  <span className={styles.datasetLabel}>{ds.name}</span>
+                  <span className={styles.datasetLabel}>{DATASET_LABELS[ds.name] || ds.name}</span>
                   <span className={styles.datasetCount}>{ds.count} 筆</span>
                   <span className={styles.datasetDate}>{ds.last_updated?.slice(0, 10) || '—'}</span>
                   <span className={styles.datasetStatus}>
