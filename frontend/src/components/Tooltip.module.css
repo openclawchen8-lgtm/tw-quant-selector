@@ -4,10 +4,7 @@
 }
 
 .tooltip {
-  position: absolute;
-  bottom: calc(100% + var(--tooltip-offset));
-  left: 50%;
-  transform: translateX(-50%);
+  /* position: fixed 改由 inline style 動態設定 */
   background: var(--bg-overlay);
   color: var(--text-primary);
   font-size: 12px;
