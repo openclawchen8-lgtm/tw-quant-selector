@@ -1,9 +1,8 @@
 export function formatPrice(v: number | null | undefined): string {
   if (v == null || Number.isNaN(v)) return '—';
-  // 台股股價格式：<10 三位小數、10–1000 兩位小數、>=1000 整數
+  // 台股股價格式：<10 三位小數、>=10 兩位小數 (確保千元以上也支援小數點，如台積電)
   if (v < 10) return v.toFixed(3);
-  if (v < 1000) return v.toFixed(2);
-  return v.toFixed(0);
+  return v.toFixed(2);
 }
 
 export function formatReturn(v: number | null | undefined): string {
@@ -50,7 +49,7 @@ export function formatMoney(v: number | null | undefined): string {
 // T050 新增功能（原有函式完全不動，只追加以下）
 // ============================================
 
-export type NumberFormatType = 'price' | 'percent' | 'score' | 'market_cap' | 'volume' | 'ratio' | 'days';
+export type NumberFormatType = 'price' | 'percent' | 'score' | 'market_cap' | 'volume' | 'ratio' | 'days' | 'money';
 
 export interface FormatNumberOptions {
   type: NumberFormatType;
@@ -95,6 +94,11 @@ export function formatNumber(
       return formatRatio(value, opts);
     case 'days':
       return formatDays(value, opts);
+    case 'money':
+      return `$${value.toLocaleString(undefined, { 
+        minimumFractionDigits: 2, 
+        maximumFractionDigits: 2 
+      })}`;
     default:
       return String(value);
   }

@@ -6,24 +6,45 @@
 
 ## 🚀 快速啟動流程
 
-### 步驟 1：更新資料庫中的庫存
-監控系統會讀取資料庫 `portfolio` 表中的資料。您可以使用以下 SQL 或 Python 指令更新持股：
+### 方法一：使用 CSV 快速設定 (推薦)
+您可以直接編輯專案根目錄下的 `stock_monitor.csv`，格式如下：
 
+```csv
+stock_id, avg_cost, shares, is_etf, pl_pct_thod, pl_thod
+0050, 89.21, 1303, TRUE, 10, 10000
+```
+
+- **stock_id**: 股票代碼
+- **avg_cost**: 平均成本
+- **shares**: 持股數量
+- **is_etf**: 是否為 ETF (TRUE/FALSE)
+- **pl_pct_thod**: 百分比報酬率警報門檻 (%)
+- **pl_thod**: 金額損益警報門檻 (元)
+
+執行同步：
+```bash
+# 1. 編輯後執行同步腳本
+python3 scripts/sync_portfolio_csv.py
+
+# 2. 啟動即時監控
+python3 scripts/check_live_alerts.py
+```
+
+### 方法二：透過資料庫更新 (進階)
+監控系統會讀取資料庫 `portfolio` 表中的資料。
+
+1. **更新資料庫中的庫存**：
 ```bash
 # 範例：存入台積電 (2330) 均價 600, 1000 股
 ./.venv/bin/python3 -c "from tw_quant_selector.data.database import Database; db=Database(); db.execute(\"INSERT OR REPLACE INTO portfolio (stock_id, avg_cost, shares, is_etf) VALUES ('2330', 600, 1000, FALSE)\")"
 ```
 
-### 步驟 2：同步至監控清單
-執行導出腳本，將庫存轉換為輕量級的 `.stock_monitor.json`，供即時監控腳本讀取：
-
+2. **同步至監控清單**：
 ```bash
 ./.venv/bin/python3 scripts/export_portfolio.py
 ```
 
-### 步驟 3：啟動即時監控
-執行監控腳本，系統會立即從 TWSE 抓取現價並判斷損益：
-
+3. **啟動即時監控**：
 ```bash
 ./.venv/bin/python3 scripts/check_live_alerts.py
 ```
@@ -46,9 +67,9 @@
 ## ⚙️ 告警設定
 
 ### 告警門檻
-系統預設的告警門檻如下，您可以透過修改 `alert_settings` 表或環境變數進行調整：
-- **報酬率門檻** (`PL_PERCENT_THRESHOLD`): 預設為 `5.0` (%)
-- **損益金額門檻** (`PL_THRESHOLD`): 預設為 `50000` (元)
+系統預設的告警門檻如下，您可以透過修改 `alert_settings` 表、環境變數，或是在 `stock_monitor.csv` 中針對個別持倉設定 (`pl_pct_thod`, `pl_thod`)：
+- **報酬率門檻** (`pl_pct_thod`): 預設為 `5.0` (%)
+- **損益金額門檻** (`pl_thod`): 預設為 `50000` (元)
 
 ### 通知管道
 請確保 `.env` 文件中已設定以下資訊：

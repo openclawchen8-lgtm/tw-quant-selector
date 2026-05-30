@@ -149,15 +149,16 @@ class AlertManager:
                 return {"sent": False, "reason": "cooldown", "cooldown_until": cooldown_until}
         self._last_alert_time[cooldown_key] = now
 
+        threshold_display = f"{threshold_value:.2f}%" if threshold_type == "percent" else f"{threshold_value:,.2f} 元"
         direction = "上漲" if pnl >= 0 else "下跌"
         subject = f"[tw-quant-selector] 個股損益告警 — {stock_name} ({stock_id})"
         message = (
             f"股票：{stock_name} ({stock_id})\n"
-            f"損益：{'+' if pnl >= 0 else ''}{pnl:,.0f} 元（{pnl_pct:+.2f}%）\n"
-            f"門檻：{threshold_type} {threshold_value}\n"
-            f"均價：{avg_cost:,.0f}\n"
-            f"現價：{current_price:,.0f}\n"
-            f"持有：{shares} 張\n"
+            f"損益：{'+' if pnl >= 0 else ''}{pnl:,.2f} 元（{pnl_pct:+.2f}%）\n"
+            f"門檻：{threshold_display}\n"
+            f"均價：{avg_cost:,.2f}\n"
+            f"現價：{current_price:,.2f}\n"
+            f"持有：{shares} 股\n"
             f"方向：{direction}突破門檻"
         )
         try:

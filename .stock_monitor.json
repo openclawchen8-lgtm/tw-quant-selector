@@ -1,16 +1,42 @@
 [
   {
     "stock_id": "0050",
-    "avg_cost": 150.0,
+    "avg_cost": 89.21,
+    "shares": 1303,
+    "is_etf": true,
+    "pl_pct_thod": 10.0,
+    "pl_thod": 10000.0,
+    "market": "TSE",
+    "current_price": 105.4
+  },
+  {
+    "stock_id": "00981A",
+    "avg_cost": 29.13,
     "shares": 2000,
     "is_etf": true,
-    "market": "TSE"
+    "pl_pct_thod": 10.0,
+    "pl_thod": 10000.0,
+    "market": "TSE",
+    "current_price": 31.54
   },
   {
     "stock_id": "2330",
-    "avg_cost": 600.0,
-    "shares": 1000,
+    "avg_cost": 2271.97,
+    "shares": 40,
     "is_etf": false,
-    "market": "TSE"
+    "pl_pct_thod": 10.0,
+    "pl_thod": 10000.0,
+    "market": "TSE",
+    "current_price": 2355.0
+  },
+  {
+    "stock_id": "2882",
+    "avg_cost": 79.0,
+    "shares": 417,
+    "is_etf": false,
+    "pl_pct_thod": 10.0,
+    "pl_thod": 10000.0,
+    "market": "TSE",
+    "current_price": 85.7
   }
 ]

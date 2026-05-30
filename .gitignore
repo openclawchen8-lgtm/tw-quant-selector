@@ -1,6 +1,9 @@
 # 環境變數
 .env
 .env.*
+.stock_monitor.json
+.stock_monitor.json.example
+stock_monitor.csv
 
 # 資料庫
 *.duckdb

@@ -79,10 +79,10 @@
 /* Date column */
 .dateCol { text-align: center; color: var(--text-muted); font-family: var(--font-data); font-size: var(--font-size-sm); }
 
-.bullText { color: var(--color-bull-text); }
-.bearText { color: var(--color-bear-text); }
-.buyText { color: var(--color-bull-text); font-weight: 600; }
-.sellText { color: var(--color-bear-text); font-weight: 600; }
+.bullText { color: var(--color-negative-text); }
+.bearText { color: var(--color-positive-text); }
+.buyText { color: var(--color-negative-text); font-weight: 600; }
+.sellText { color: var(--color-positive-text); font-weight: 600; }
 
 .pnlIcon { margin-right: 4px; font-size: var(--font-size-xs); }
 
@@ -272,6 +272,19 @@
   transition: background 0.15s;
 }
 .configClearBtn:hover { background: var(--color-bear-dim); }
+
+.configSaveBtn {
+  background: var(--color-accent);
+  border: none;
+  color: #fff;
+  border-radius: var(--radius-btn);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+  margin-right: var(--space-2);
+  transition: opacity 0.15s;
+}
+.configSaveBtn:hover { opacity: 0.9; }
 
 .expandBtn {
   background: none;

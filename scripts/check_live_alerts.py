@@ -68,8 +68,7 @@ def check_live_alerts():
     config = get_alert_config(db)
     
     # Thresholds
-    pct_threshold = float(config.get("PL_PERCENT_THRESHOLD") or 5.0) # Default 5%
-    amt_threshold = float(config.get("PL_THRESHOLD") or 50000)      # Default 50k
+    # Try getting from holding data, fallback to config
     
     print(f"🔍 Monitoring {len(holdings)} holdings...")
     live_prices = fetch_live_prices(holdings)
@@ -84,19 +83,24 @@ def check_live_alerts():
         avg_cost = h["avg_cost"]
         shares = h["shares"]
         
-        # P/L Calculation (Taiwan stocks are 1000 shares per lot usually, 
-        # but our 'shares' should be the actual number of shares)
+        pct_threshold = float(h.get("pl_pct_thod") or config.get("PL_PERCENT_THRESHOLD") or 5.0)
+        amt_threshold = float(h.get("pl_thod") or config.get("PL_THRESHOLD") or 50000)
+        
+        # P/L Calculation
         pnl = (current_price - avg_cost) * shares
         pnl_pct = (current_price / avg_cost - 1) * 100
         
-        print(f"  📊 {sid}: Cost={avg_cost:.2f}, Live={current_price:.2f}, P/L={pnl_pct:+.2f}% (${pnl:,.0f})")
+        # Update holding data
+        h["current_price"] = round(current_price, 2)
+        
+        print(f"  📊 {sid}: Cost={avg_cost:.2f}, Live={current_price:.2f}, P/L={pnl_pct:+.2f}% (${pnl:,.2f})")
         
         # Trigger alert if threshold met
         if abs(pnl_pct) >= pct_threshold or abs(pnl) >= amt_threshold:
             print(f"  🔔 Alert triggered for {sid}!")
             manager.handle_pl_alert({
                 "stock_id": sid,
-                "stock_name": sid, # In a real system, we'd lookup name
+                "stock_name": sid,
                 "pnl": pnl,
                 "pnl_pct": pnl_pct,
                 "current_price": current_price,
@@ -106,6 +110,11 @@ def check_live_alerts():
                 "threshold_type": "percent" if abs(pnl_pct) >= pct_threshold else "amount",
                 "alert_enabled": True
             })
+
+    # Save results back to monitor file
+    with open(monitor_path, "w", encoding="utf-8") as f:
+        json.dump(holdings, f, indent=2, ensure_ascii=False)
+    print(f"\n✅ Updated {monitor_path} with latest P/L values.")
 
 if __name__ == "__main__":
     check_live_alerts()

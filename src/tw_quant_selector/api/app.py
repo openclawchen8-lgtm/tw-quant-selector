@@ -111,6 +111,41 @@ ALERT_KEYS = [
 SENSITIVE_KEYS = ["TELEGRAM_BOT_TOKEN", "SMTP_PASSWORD"]
 
 
+@app.post("/api/v1/portfolio")
+def add_portfolio_lot(lot: dict):
+    # Simplified insertion, assuming stock exists
+    db.execute("""
+        INSERT INTO portfolio (stock_id, avg_cost, shares, is_etf)
+        VALUES (?, ?, ?, ?)
+    """, [lot["stock_id"], lot["cost"], lot["shares"], lot.get("is_etf", False)])
+    return api_response({"status": "success"})
+
+@app.delete("/api/v1/portfolio/{stock_id}")
+def delete_portfolio_stock(stock_id: str):
+    db.execute("DELETE FROM portfolio WHERE stock_id = ?", [stock_id])
+    return api_response({"status": "success"})
+
+@app.get("/api/v1/portfolio")
+def get_portfolio():
+    rows = db.execute("""
+        SELECT p.stock_id, p.avg_cost, p.shares, p.is_etf, s.market, p.pl_pct_thod, p.pl_thod
+        FROM portfolio p
+        LEFT JOIN stocks s ON p.stock_id = s.stock_id
+    """).fetchall()
+    
+    portfolio = []
+    for r in rows:
+        portfolio.append({
+            "stock_id": r[0],
+            "avgCost": float(r[1]),
+            "totalShares": int(r[2]),
+            "is_etf": bool(r[3]),
+            "market": (r[4] or "TSE").upper(),
+            "pl_pct_thod": float(r[5]) if r[5] is not None else None,
+            "pl_thod": float(r[6]) if r[6] is not None else None
+        })
+    return api_response(portfolio)
+
 @app.get("/api/v1/settings/alerts")
 def get_alert_settings():
     db_settings = {r[0]: r[1] for r in db.execute("SELECT key, value FROM alert_settings").fetchall()}
