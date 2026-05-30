@@ -53,3 +53,7 @@ Thumbs.db
 
 # Docker (本地建置用)
 docker-build-*
+.venv_docker/
+myenv/
+
+
